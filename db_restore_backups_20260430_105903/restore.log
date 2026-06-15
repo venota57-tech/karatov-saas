@@ -1,0 +1,10 @@
+== KARATOV CX Hub DB auto-restore ==
+Project folder: /Users/elenagosteva/Downloads/karatov-cx-hub-mvp-v3-10.2-platform-diagnostics-dates — копия
+Starting current DB container...
+ Container karatov-cx-hub-mvp-v3-102-platform-diagnostics-dates-db-1 Starting 
+ Container karatov-cx-hub-mvp-v3-102-platform-diagnostics-dates-db-1 Started 
+Current DB container: a7c6e9ed8846792db1267589d12bc248d5affbd15ba38931e83f390d2145927d
+Current Postgres volume: karatov-cx-hub-mvp-v32-platform-diagnostics-dates_postgres_data
+Backing up current database to /Users/elenagosteva/Downloads/karatov-cx-hub-mvp-v3-10.2-platform-diagnostics-dates — копия/db_restore_backups_20260430_105903/current_before_restore.sql ...
+Current DB backup saved.
+./restore_reviews_questions_auto.sh: line 52: mapfile: command not found

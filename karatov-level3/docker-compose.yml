@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: karatov
+      POSTGRES_PASSWORD: karatov
+      POSTGRES_DB: karatov
+    ports:
+      - "5432:5432"
+    volumes:
+      - karatov-cx-hub-v3-27-wb-live-route-viewer_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  karatov-cx-hub-v3-27-wb-live-route-viewer_postgres_data:
+    external: true

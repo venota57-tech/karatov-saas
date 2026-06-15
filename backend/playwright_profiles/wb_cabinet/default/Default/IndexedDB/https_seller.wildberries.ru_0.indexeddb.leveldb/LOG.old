@@ -1,0 +1,26 @@
+2026/06/15-12:20:48.490 44 Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/15-12:20:48.496 44 Recovering log #170
+2026/06/15-12:20:48.533 44 Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000170.log 
+2026/06/15-12:20:48.644 4b Manual compaction at level-0 from '\x00\xbb\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbc\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:20:52.241 4b Level-0 table #175: started
+2026/06/15-12:20:52.468 4b Level-0 table #175: 685700 bytes OK
+2026/06/15-12:20:52.476 4b Delete type=0 #170
+2026/06/15-12:20:52.477 43 Manual compaction at level-0 from '\x00\xbc\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbd\x00\x00\x00' @ 0 : 0; will stop at '\x00\xbc\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 169212 : 1
+2026/06/15-12:20:52.478 43 Compacting 1@0 + 1@1 files
+2026/06/15-12:20:52.542 43 Generated table #176@0: 3692 keys, 50020 bytes
+2026/06/15-12:20:52.543 43 Compacted 1@0 + 1@1 files => 50020 bytes
+2026/06/15-12:20:52.551 43 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/15-12:20:52.562 43 Delete type=2 #175
+2026/06/15-12:20:52.565 43 Manual compaction at level-0 from '\x00\xbc\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 169212 : 1 .. '\x00\xbd\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:20:56.812 4b Level-0 table #178: started
+2026/06/15-12:20:56.824 4b Level-0 table #178: 37508 bytes OK
+2026/06/15-12:20:56.827 4b Delete type=0 #174
+2026/06/15-12:20:56.827 4b Delete type=2 #172
+2026/06/15-12:20:56.828 44 Manual compaction at level-0 from '\x00\xbd\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbe\x00\x00\x00' @ 0 : 0; will stop at '\x00\xbd\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 170227 : 1
+2026/06/15-12:20:56.828 44 Compacting 1@0 + 1@1 files
+2026/06/15-12:20:56.841 44 Generated table #179@0: 3744 keys, 55056 bytes
+2026/06/15-12:20:56.841 44 Compacted 1@0 + 1@1 files => 55056 bytes
+2026/06/15-12:20:56.842 44 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/15-12:20:56.843 43 Manual compaction at level-0 from '\x00\xbd\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 170227 : 1 .. '\x00\xbe\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:21:01.409 43 Manual compaction at level-0 from '\x00\xbe\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbf\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:21:06.009 43 Manual compaction at level-0 from '\x00\xbf\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xc0\x00\x00\x00' @ 0 : 0; will stop at (end)

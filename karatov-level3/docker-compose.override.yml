@@ -1,0 +1,15 @@
+services:
+  backend:
+    environment:
+      DATABASE_URL: postgresql://karatov:karatov@db:5432/karatov_cx_hub
+  db:
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=karatov pg_isready -U karatov -d karatov_cx_hub"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres_data:
+    external: true
+    name: karatov-cx-hub-mvp-v32-platform-diagnostics-dates_postgres_data
