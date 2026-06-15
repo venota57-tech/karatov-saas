@@ -1,40 +1,18 @@
-from datetime import datetime
-from sqlalchemy import String, Text, DateTime, Integer, Boolean, JSON, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
-from .database import Base
+from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+import datetime
 
+Base = declarative_base()
 
-def wb_product_url(sku: str | None) -> str | None:
-    if not sku:
-        return None
-    value = str(sku).strip()
-    if not value or not value.isdigit():
-        return None
-    return f"https://www.wildberries.ru/catalog/{value}/detail.aspx"
+class Review(Base):
+    __tablename__ = "reviews"
 
-
-def _walk_for_product_id(obj):
-    keys = {'nmId', 'nmID', 'nm_id', 'nmid'}
-    if isinstance(obj, dict):
-        for key in keys:
-            value = obj.get(key)
-            if value not in (None, ''):
-                return str(value)
-        for key in ('productDetails', 'product', 'nomenclature', 'nm'):
-            found = _walk_for_product_id(obj.get(key))
-            if found:
-                return found
-        for value in obj.values():
-            found = _walk_for_product_id(value)
-            if found:
-                return found
-    elif isinstance(obj, list):
-        for value in obj:
-            found = _walk_for_product_id(value)
-            if found:
-                return found
-    return None
-
+    id = Column(Integer, primary_key=True)
+    marketplace = Column(String)
+    text = Column(Text)
+    answer = Column(Text)
+    status = Column(String, default="new")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 def wb_product_url_from_raw(raw: dict | None, sku: str | None = None) -> str | None:
     url = wb_product_url(sku)
