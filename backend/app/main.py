@@ -36,16 +36,5 @@ def generate(review_id: int):
     return {"ok": True}
 
 
-# 👇 ВАЖНО: только одна строка, без всего лишнего
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")    return {"status": "ok", "service": "karatov-saas"}
-
-
-@app.get("/health")
-def health():
-    return {"status": "alive"}
-
-
-# =========================
-# FRONTEND (DASHBOARD)
-# =========================
+# подключение фронта
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
