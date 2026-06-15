@@ -8,10 +8,12 @@ app = FastAPI()
 # создаём таблицы
 Base.metadata.create_all(bind=engine)
 
+
 @app.get("/reviews")
 def get_reviews():
     db = SessionLocal()
     return db.query(Review).all()
+
 
 @app.post("/reviews")
 def create_review(text: str):
@@ -20,6 +22,7 @@ def create_review(text: str):
     db.add(review)
     db.commit()
     return {"status": "ok"}
+
 
 @app.post("/generate/{review_id}")
 def generate(review_id: int):
@@ -32,9 +35,9 @@ def generate(review_id: int):
     db.commit()
     return {"ok": True}
 
-# ВАЖНО: фронт подключаем ВМЕСТО root endpoint
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")def root():
-    return {"status": "ok", "service": "karatov-saas"}
+
+# 👇 ВАЖНО: только одна строка, без всего лишнего
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")    return {"status": "ok", "service": "karatov-saas"}
 
 
 @app.get("/health")
