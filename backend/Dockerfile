@@ -2,14 +2,8 @@ FROM python:3.12
 
 WORKDIR /app
 
-# копируем ТОЛЬКО backend
-COPY backend /app/backend
-
-# копируем frontend отдельно
-COPY frontend /app/frontend
-
-# идём в backend
-WORKDIR /app/backend
+# копируем содержимое backend в /app
+COPY . /app
 
 # устанавливаем зависимости
 RUN pip install --no-cache-dir -r requirements.txt
