@@ -1,26 +1,38 @@
-2026/06/15-12:20:48.490 44 Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
-2026/06/15-12:20:48.496 44 Recovering log #170
-2026/06/15-12:20:48.533 44 Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000170.log 
-2026/06/15-12:20:48.644 4b Manual compaction at level-0 from '\x00\xbb\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbc\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-12:20:52.241 4b Level-0 table #175: started
-2026/06/15-12:20:52.468 4b Level-0 table #175: 685700 bytes OK
-2026/06/15-12:20:52.476 4b Delete type=0 #170
-2026/06/15-12:20:52.477 43 Manual compaction at level-0 from '\x00\xbc\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbd\x00\x00\x00' @ 0 : 0; will stop at '\x00\xbc\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 169212 : 1
-2026/06/15-12:20:52.478 43 Compacting 1@0 + 1@1 files
-2026/06/15-12:20:52.542 43 Generated table #176@0: 3692 keys, 50020 bytes
-2026/06/15-12:20:52.543 43 Compacted 1@0 + 1@1 files => 50020 bytes
-2026/06/15-12:20:52.551 43 compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/06/15-12:20:52.562 43 Delete type=2 #175
-2026/06/15-12:20:52.565 43 Manual compaction at level-0 from '\x00\xbc\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 169212 : 1 .. '\x00\xbd\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-12:20:56.812 4b Level-0 table #178: started
-2026/06/15-12:20:56.824 4b Level-0 table #178: 37508 bytes OK
-2026/06/15-12:20:56.827 4b Delete type=0 #174
-2026/06/15-12:20:56.827 4b Delete type=2 #172
-2026/06/15-12:20:56.828 44 Manual compaction at level-0 from '\x00\xbd\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbe\x00\x00\x00' @ 0 : 0; will stop at '\x00\xbd\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 170227 : 1
-2026/06/15-12:20:56.828 44 Compacting 1@0 + 1@1 files
-2026/06/15-12:20:56.841 44 Generated table #179@0: 3744 keys, 55056 bytes
-2026/06/15-12:20:56.841 44 Compacted 1@0 + 1@1 files => 55056 bytes
-2026/06/15-12:20:56.842 44 compacted to: files[ 0 1 1 0 0 0 0 ]
-2026/06/15-12:20:56.843 43 Manual compaction at level-0 from '\x00\xbd\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 170227 : 1 .. '\x00\xbe\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-12:21:01.409 43 Manual compaction at level-0 from '\x00\xbe\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xbf\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-12:21:06.009 43 Manual compaction at level-0 from '\x00\xbf\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xc0\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:23:33.596 44 Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/15-12:23:33.604 44 Recovering log #184
+2026/06/15-12:23:33.606 44 Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000184.log 
+2026/06/15-12:23:33.611 44 Delete type=2 #183
+2026/06/15-12:23:33.759 4b Level-0 table #189: started
+2026/06/15-12:23:33.776 4b Level-0 table #189: 71871 bytes OK
+2026/06/15-12:23:33.778 4b Delete type=0 #184
+2026/06/15-12:23:33.778 4a Manual compaction at level-0 from '\x00\xc5\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xc6\x00\x00\x00' @ 0 : 0; will stop at '\x00\xc5\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 177451 : 1
+2026/06/15-12:23:33.778 4a Compacting 1@0 + 1@1 files
+2026/06/15-12:23:33.793 4a Generated table #190@0: 4141 keys, 86082 bytes
+2026/06/15-12:23:33.794 4a Compacted 1@0 + 1@1 files => 86082 bytes
+2026/06/15-12:23:33.794 4a compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/15-12:23:33.795 4a Delete type=2 #189
+2026/06/15-12:23:33.796 4a Manual compaction at level-0 from '\x00\xc5\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 177451 : 1 .. '\x00\xc6\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:23:37.331 44 Level-0 table #192: started
+2026/06/15-12:23:37.340 44 Level-0 table #192: 29688 bytes OK
+2026/06/15-12:23:37.342 44 Delete type=0 #188
+2026/06/15-12:23:37.342 44 Delete type=2 #186
+2026/06/15-12:23:37.343 44 Manual compaction at level-0 from '\x00\xc6\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xc7\x00\x00\x00' @ 0 : 0; will stop at '\x00\xc6\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 178212 : 1
+2026/06/15-12:23:37.343 44 Compacting 1@0 + 1@1 files
+2026/06/15-12:23:37.359 44 Generated table #193@0: 4180 keys, 89495 bytes
+2026/06/15-12:23:37.359 44 Compacted 1@0 + 1@1 files => 89495 bytes
+2026/06/15-12:23:37.360 44 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/15-12:23:37.361 44 Manual compaction at level-0 from '\x00\xc6\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 178212 : 1 .. '\x00\xc7\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:23:41.930 49 Manual compaction at level-0 from '\x00\xc7\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xc8\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:23:46.520 4a Manual compaction at level-0 from '\x00\xc8\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xc9\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-12:23:51.107 44 Level-0 table #195: started
+2026/06/15-12:23:51.132 44 Level-0 table #195: 84355 bytes OK
+2026/06/15-12:23:51.133 44 Delete type=2 #190
+2026/06/15-12:23:51.133 44 Delete type=2 #192
+2026/06/15-12:23:51.133 44 Delete type=0 #191
+2026/06/15-12:23:51.134 44 Manual compaction at level-0 from '\x00\xc9\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\xca\x00\x00\x00' @ 0 : 0; will stop at '\x00\xc9\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 180673 : 1
+2026/06/15-12:23:51.134 44 Compacting 1@0 + 1@1 files
+2026/06/15-12:23:51.159 44 Generated table #196@0: 4304 keys, 99631 bytes
+2026/06/15-12:23:51.159 44 Compacted 1@0 + 1@1 files => 99631 bytes
+2026/06/15-12:23:51.159 44 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/06/15-12:23:51.160 44 Delete type=2 #195
+2026/06/15-12:23:51.160 44 Manual compaction at level-0 from '\x00\xc9\x01\x03\x03\x00\x00\x00\x00\x00\x00\xf0?' @ 180673 : 1 .. '\x00\xca\x00\x00\x00' @ 0 : 0; will stop at (end)
