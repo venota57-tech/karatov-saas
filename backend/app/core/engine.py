@@ -1,16 +1,22 @@
 import asyncio
 import logging
-import os
 import json
 import redis
+import os
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL")
-r = redis.from_url(REDIS_URL, decode_responses=True)
+r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 
 class CoreEngine:
+    """
+    SaaS Business Core Engine v2
+    - routing
+    - queue processing
+    - business logic separation
+    """
+
     def __init__(self):
         self.running = False
         self.task = None
@@ -20,64 +26,76 @@ class CoreEngine:
             return
 
         self.running = True
-        logger.info("CORE ENGINE STARTED")
+        logger.info("CORE ENGINE v2 STARTED")
 
         self.task = asyncio.create_task(self.loop())
 
     async def loop(self):
         while self.running:
             try:
-                await self.process_queue()
+                await self.tick()
                 await asyncio.sleep(2)
             except Exception as e:
-                logger.error(f"Engine error: {e}")
+                logger.error(f"Engine crash handled: {e}")
                 await asyncio.sleep(3)
 
-    async def process_queue(self):
-        task = r.lpop("tasks")
+    async def tick(self):
+        raw = r.lpop("tasks")
 
-        if not task:
+        if not raw:
             return
 
-        data = json.loads(task)
+        task = json.loads(raw)
 
-        logger.info(f"Processing task: {data}")
+        logger.info(f"[CORE] task received: {task}")
 
-        await self.handle_task(data)
+        await self.router(task)
 
-    async def handle_task(self, task):
-        """
-        ЕДИНАЯ ТОЧКА БИЗНЕС-ЛОГИКИ
-        """
+    # =========================
+    # ROUTER LAYER (ключевой слой)
+    # =========================
+    async def router(self, task: dict):
+        t = task.get("type")
 
-        task_type = task.get("type")
+        if t == "review.ingest":
+            await self.handle_review(task)
 
-        # -------------------------
-        # 1. AUTOSYNC REVIEWS
-        # -------------------------
-        if task_type == "sync_reviews":
-            await self.sync_reviews(task)
+        elif t == "review.reply":
+            await self.handle_reply(task)
 
-        # -------------------------
-        # 2. AUTO PUBLISH ANSWERS
-        # -------------------------
-        elif task_type == "publish_answer":
-            await self.publish_answer(task)
+        elif t == "publish.auto":
+            await self.handle_publish(task)
 
-        # -------------------------
-        # 3. FBO FILTER (УБИРАЕМ "ЛЕВАК")
-        # -------------------------
-        elif task_type == "fbo_filter":
-            await self.fbo_filter(task)
+        elif t == "fbo.filter":
+            await self.handle_fbo_filter(task)
 
         else:
-            logger.warning(f"Unknown task: {task_type}")
+            logger.warning(f"Unknown task type: {t}")
 
-    async def sync_reviews(self, task):
-        logger.info("Syncing reviews...")
+    # =========================
+    # BUSINESS WORKERS
+    # =========================
 
-    async def publish_answer(self, task):
-        logger.info("Publishing answer...")
+    async def handle_review(self, task):
+        """
+        получение отзывов
+        """
+        logger.info("Processing review ingestion")
 
-    async def fbo_filter(self, task):
-        logger.info("Filtering FBO data (removing noise)...")
+    async def handle_reply(self, task):
+        """
+        автоответы на отзывы
+        """
+        logger.info("Generating reply")
+
+    async def handle_publish(self, task):
+        """
+        публикация контента
+        """
+        logger.info("Publishing content")
+
+    async def handle_fbo_filter(self, task):
+        """
+        УБИРАЕМ 'ЛЕВАК' И МУСОР ИЗ LIVE FBO
+        """
+        logger.info("Filtering FBO noise data")
