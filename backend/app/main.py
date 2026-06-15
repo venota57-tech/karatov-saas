@@ -5,6 +5,8 @@ from .database import Base, engine, run_lightweight_migrations
 from .routes import reviews, questions, sync, ozon_sync, summary, analytics, reports, settings as settings_routes, autopublish_settings, fbo_booking
 from .services.sync_service import wb_auto_sync_loop
 from .services.ozon_sync_service import ozon_auto_sync_loop
+import asyncio
+from app.engine.engine import engine_loop
 
 Base.metadata.create_all(bind=engine)
 run_lightweight_migrations()
@@ -49,3 +51,6 @@ async def startup_event():
 @app.get('/health')
 def health():
     return {'status': 'ok'}
+    @app.on_event("startup")
+async def start_engine():
+    asyncio.create_task(engine_loop())
