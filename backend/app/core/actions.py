@@ -5,25 +5,19 @@ logger = logging.getLogger(__name__)
 
 class Actions:
     """
-    Единый слой бизнес-действий
-    (сюда подключается WB / Ozon / CRM / FBO)
+    Business Logic Layer (SaaS)
+    WB / Ozon / FBO / Reviews
     """
 
     async def sync_reviews(self):
-        logger.info("SYNC: fetching reviews...")
-        # тут позже подключим API маркетплейсов
+        logger.info("ACTION: syncing reviews")
 
     async def publish_answer(self, review_id: str, text: str):
-        logger.info(f"PUBLISH: answer to {review_id}")
-        # публикация ответа
+        logger.info(f"ACTION: publishing answer for {review_id}")
 
     async def create_listing(self, product: dict):
-        logger.info("PUBLISH: new listing")
-        # публикация товара
+        logger.info("ACTION: publishing product listing")
 
     async def filter_fbo_noise(self, data: dict):
-        """
-        Убираем 'левак' из live FBO
-        """
-        logger.info("FBO FILTER: cleaning live data")
+        logger.info("ACTION: filtering FBO live noise")
         return data
