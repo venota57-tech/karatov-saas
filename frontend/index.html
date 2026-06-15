@@ -1,1 +1,133 @@
-<html><head><title>KARATOV CX Hub</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Karatov SaaS Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+        }
+
+        button {
+            padding: 10px 15px;
+            margin-right: 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        pre {
+            background: #0b1220;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🚀 Karatov SaaS Dashboard</h1>
+
+<div class="card">
+    <h2>System Status</h2>
+    <pre id="status">loading...</pre>
+</div>
+
+<div class="card">
+    <h2>Actions</h2>
+
+    <button onclick="publish()">Publish Test Item</button>
+    <button onclick="sync()">Sync Reviews</button>
+    <button onclick="reply()">Send Reply</button>
+</div>
+
+<div class="card">
+    <h2>Logs</h2>
+    <pre id="logs">waiting...</pre>
+</div>
+
+<script>
+
+async function loadStatus() {
+    try {
+        const res = await fetch("/health");
+        const data = await res.json();
+        document.getElementById("status").innerText = JSON.stringify(data, null, 2);
+    } catch (e) {
+        document.getElementById("status").innerText = "error loading status";
+    }
+}
+
+async function publish() {
+    await fetch("/tasks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            type: "publish.auto",
+            product: {
+                title: "Test Product",
+                price: 1000
+            }
+        })
+    });
+
+    alert("Publish task sent");
+}
+
+async function sync() {
+    await fetch("/tasks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            type: "review.ingest"
+        })
+    });
+
+    alert("Sync task sent");
+}
+
+async function reply() {
+    await fetch("/tasks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            type: "review.reply",
+            review_id: "123",
+            text: "Спасибо за отзыв!"
+        })
+    });
+
+    alert("Reply task sent");
+}
+
+setInterval(loadStatus, 3000);
+loadStatus();
+
+</script>
+
+</body>
+</html>
