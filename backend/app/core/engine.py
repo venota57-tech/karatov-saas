@@ -5,6 +5,7 @@ import redis
 import os
 
 from app.core.actions import Actions
+from app.core.observer import Observer
 
 logger = logging.getLogger(__name__)
 
@@ -13,24 +14,27 @@ r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 class CoreEngine:
     """
-    SaaS Core Engine v2 (FINAL CLEAN VERSION)
+    SaaS Core Engine v2 FINAL
     - routing
     - queue processing
     - business actions layer
-    - safe Render execution
+    - live observer (visibility)
+    - Render-safe async loop
     """
 
     def __init__(self):
         self.running = False
         self.task = None
+
         self.actions = Actions()
+        self.observer = Observer()
 
     async def start(self):
         if self.running:
             return
 
         self.running = True
-        logger.info("CORE ENGINE v2 STARTED")
+        logger.info("CORE ENGINE STARTED")
 
         self.task = asyncio.create_task(self.loop())
 
@@ -44,6 +48,8 @@ class CoreEngine:
                 await asyncio.sleep(3)
 
     async def tick(self):
+        self.observer.heartbeat()
+
         raw = r.lpop("tasks")
 
         if not raw:
@@ -51,7 +57,7 @@ class CoreEngine:
 
         task = json.loads(raw)
 
-        logger.info(f"[CORE] task received: {task}")
+        self.observer.event("task_received", task)
 
         await self.router(task)
 
@@ -61,22 +67,29 @@ class CoreEngine:
     async def router(self, task: dict):
         task_type = task.get("type")
 
+        self.observer.event("routing", task_type)
+
         if task_type == "review.ingest":
             await self.actions.sync_reviews()
+            self.observer.event("review_ingested")
 
         elif task_type == "review.reply":
             await self.actions.publish_answer(
                 task.get("review_id"),
                 task.get("text")
             )
+            self.observer.event("reply_published")
 
         elif task_type == "publish.auto":
             await self.actions.create_listing(task.get("product"))
+            self.observer.event("product_published")
 
         elif task_type == "fbo.filter":
             await self.actions.filter_fbo_noise(task)
+            self.observer.event("fbo_filtered")
 
         else:
+            self.observer.event("unknown_task", task_type)
             logger.warning(f"Unknown task type: {task_type}")
 
     async def stop(self):
