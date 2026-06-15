@@ -1,8 +1,26 @@
-2026/06/15-13:26:27.046 43 Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
-2026/06/15-13:26:27.051 43 Recovering log #375
-2026/06/15-13:26:27.065 43 Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000375.log 
-2026/06/15-13:26:27.224 43 Manual compaction at level-0 from ' \xa6\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa7\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:26:30.797 43 Manual compaction at level-0 from ' \xa7\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa8\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:26:35.390 4b Manual compaction at level-0 from ' \xa8\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa9\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:26:40.008 4b Manual compaction at level-0 from ' \xa9\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xaa\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:26:44.572 43 Manual compaction at level-0 from ' \xaa\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xab\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:31:58.217 49 Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/15-13:31:58.227 49 Recovering log #375
+2026/06/15-13:31:58.243 49 Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000375.log 
+2026/06/15-13:31:58.424 44 Level-0 table #381: started
+2026/06/15-13:31:58.514 44 Level-0 table #381: 380411 bytes OK
+2026/06/15-13:31:58.518 44 Delete type=0 #375
+2026/06/15-13:31:58.519 44 Manual compaction at level-0 from ' \xab\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xac\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:32:01.997 43 Manual compaction at level-0 from ' \xac\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xad\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:32:02.004 4b Compacting 1@1 + 1@2 files
+2026/06/15-13:32:02.329 4b Generated table #382@1: 10551 keys, 904362 bytes
+2026/06/15-13:32:02.329 4b Compacted 1@1 + 1@2 files => 904362 bytes
+2026/06/15-13:32:02.331 4b compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/06/15-13:32:02.333 4b Delete type=2 #381
+2026/06/15-13:32:02.334 4b Delete type=2 #378
+2026/06/15-13:32:06.624 44 Level-0 table #384: started
+2026/06/15-13:32:06.631 44 Level-0 table #384: 65519 bytes OK
+2026/06/15-13:32:06.632 44 Delete type=0 #380
+2026/06/15-13:32:06.632 44 Manual compaction at level-0 from ' \xad\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xae\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:32:06.674 4b Compacting 1@1 + 1@2 files
+2026/06/15-13:32:06.815 4b Generated table #385@1: 10637 keys, 912132 bytes
+2026/06/15-13:32:06.815 4b Compacted 1@1 + 1@2 files => 912132 bytes
+2026/06/15-13:32:06.816 4b compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/06/15-13:32:06.817 4b Delete type=2 #382
+2026/06/15-13:32:06.817 4b Delete type=2 #384
+2026/06/15-13:32:11.156 49 Manual compaction at level-0 from ' \xae\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xaf\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:32:15.754 49 Manual compaction at level-0 from ' \xaf\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xb0\x01\x00\x00\x00' @ 0 : 0; will stop at (end)

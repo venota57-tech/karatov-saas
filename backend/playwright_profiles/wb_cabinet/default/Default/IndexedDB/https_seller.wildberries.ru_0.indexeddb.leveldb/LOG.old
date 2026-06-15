@@ -1,10 +1,8 @@
-2026/06/15-13:25:04.441 4b Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
-2026/06/15-13:25:04.445 4b Recovering log #375
-2026/06/15-13:25:04.451 4b Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000375.log 
-2026/06/15-13:25:04.455 4b Delete type=2 #377
-2026/06/15-13:25:04.455 4b Delete type=2 #371
-2026/06/15-13:25:04.584 43 Manual compaction at level-0 from ' \xa1\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa2\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:25:08.185 43 Manual compaction at level-0 from ' \xa2\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa3\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:25:12.771 54 Manual compaction at level-0 from ' \xa3\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa4\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:25:17.376 4b Manual compaction at level-0 from ' \xa4\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa5\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
-2026/06/15-13:25:21.995 49 Manual compaction at level-0 from ' \xa5\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa6\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:26:27.046 43 Reusing MANIFEST /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/15-13:26:27.051 43 Recovering log #375
+2026/06/15-13:26:27.065 43 Reusing old log /app/playwright_profiles/wb_cabinet/default/Default/IndexedDB/https_seller.wildberries.ru_0.indexeddb.leveldb/000375.log 
+2026/06/15-13:26:27.224 43 Manual compaction at level-0 from ' \xa6\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa7\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:26:30.797 43 Manual compaction at level-0 from ' \xa7\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa8\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:26:35.390 4b Manual compaction at level-0 from ' \xa8\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xa9\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:26:40.008 4b Manual compaction at level-0 from ' \xa9\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xaa\x01\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/06/15-13:26:44.572 43 Manual compaction at level-0 from ' \xaa\x01\x00\x00\x00' @ 72057594037927935 : 1 .. ' \xab\x01\x00\x00\x00' @ 0 : 0; will stop at (end)

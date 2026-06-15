@@ -1,3 +1,5 @@
 .env
 .env
 .env
+backend/playwright_profiles/
+.DS_Store
