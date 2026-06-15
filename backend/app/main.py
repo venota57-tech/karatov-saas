@@ -1,13 +1,17 @@
 import os
-import asyncio
 from fastapi import FastAPI
+import asyncio
+
+from app.core.engine import CoreEngine
 
 app = FastAPI()
+
+engine = CoreEngine()
 
 
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "ok", "core": "active"}
 
 
 @app.get("/health")
@@ -15,10 +19,6 @@ def health():
     return {"status": "alive"}
 
 
-# IMPORTANT: Render requires app object ONLY
-# DO NOT block startup, DO NOT run uvicorn here
-
-
 @app.on_event("startup")
 async def startup():
-    print("APP STARTED - PORT SHOULD BE ACTIVE")
+    asyncio.create_task(engine.start())
