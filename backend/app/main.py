@@ -1,6 +1,6 @@
 import os
-from fastapi import FastAPI
 import asyncio
+from fastapi import FastAPI
 
 from app.core.engine import CoreEngine
 
@@ -11,7 +11,7 @@ engine = CoreEngine()
 
 @app.get("/")
 def root():
-    return {"status": "ok", "core": "active"}
+    return {"status": "ok", "system": "saas-core-v1"}
 
 
 @app.get("/health")
