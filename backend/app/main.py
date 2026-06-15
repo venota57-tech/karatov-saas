@@ -1,40 +1,39 @@
-import os
-import json
-import redis
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-
-from app.core.engine import CoreEngine
+from app.db import SessionLocal, engine
+from app.models import Base, Review
 
 app = FastAPI()
 
-# =========================
-# ENGINE START
-# =========================
-engine = CoreEngine()
+# создаём таблицы
+Base.metadata.create_all(bind=engine)
 
+@app.get("/reviews")
+def get_reviews():
+    db = SessionLocal()
+    return db.query(Review).all()
 
-@app.on_event("startup")
-async def startup():
-    import asyncio
-    asyncio.create_task(engine.start())
+@app.post("/reviews")
+def create_review(text: str):
+    db = SessionLocal()
+    review = Review(text=text, marketplace="wb")
+    db.add(review)
+    db.commit()
+    return {"status": "ok"}
 
+@app.post("/generate/{review_id}")
+def generate(review_id: int):
+    db = SessionLocal()
+    review = db.query(Review).get(review_id)
 
-# =========================
-# API: TASK QUEUE
-# =========================
-@app.post("/tasks")
-def create_task(task: dict):
-    r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
-    r.rpush("tasks", json.dumps(task))
-    return {"status": "queued"}
+    review.answer = "Тестовый ответ"
+    review.status = "done"
 
+    db.commit()
+    return {"ok": True}
 
-# =========================
-# HEALTH
-# =========================
-@app.get("/")
-def root():
+# ВАЖНО: фронт подключаем ВМЕСТО root endpoint
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")def root():
     return {"status": "ok", "service": "karatov-saas"}
 
 
