@@ -4,6 +4,8 @@ import json
 import redis
 import os
 
+from app.core.actions import Actions
+
 logger = logging.getLogger(__name__)
 
 r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
@@ -11,15 +13,17 @@ r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 class CoreEngine:
     """
-    SaaS Business Core Engine v2
+    SaaS Core Engine v2 (FINAL CLEAN VERSION)
     - routing
     - queue processing
-    - business logic separation
+    - business actions layer
+    - safe Render execution
     """
 
     def __init__(self):
         self.running = False
         self.task = None
+        self.actions = Actions()
 
     async def start(self):
         if self.running:
@@ -52,50 +56,30 @@ class CoreEngine:
         await self.router(task)
 
     # =========================
-    # ROUTER LAYER (ключевой слой)
+    # ROUTER
     # =========================
     async def router(self, task: dict):
-        t = task.get("type")
+        task_type = task.get("type")
 
-        if t == "review.ingest":
-            await self.handle_review(task)
+        if task_type == "review.ingest":
+            await self.actions.sync_reviews()
 
-        elif t == "review.reply":
-            await self.handle_reply(task)
+        elif task_type == "review.reply":
+            await self.actions.publish_answer(
+                task.get("review_id"),
+                task.get("text")
+            )
 
-        elif t == "publish.auto":
-            await self.handle_publish(task)
+        elif task_type == "publish.auto":
+            await self.actions.create_listing(task.get("product"))
 
-        elif t == "fbo.filter":
-            await self.handle_fbo_filter(task)
+        elif task_type == "fbo.filter":
+            await self.actions.filter_fbo_noise(task)
 
         else:
-            logger.warning(f"Unknown task type: {t}")
+            logger.warning(f"Unknown task type: {task_type}")
 
-    # =========================
-    # BUSINESS WORKERS
-    # =========================
-
-    async def handle_review(self, task):
-        """
-        получение отзывов
-        """
-        logger.info("Processing review ingestion")
-
-    async def handle_reply(self, task):
-        """
-        автоответы на отзывы
-        """
-        logger.info("Generating reply")
-
-    async def handle_publish(self, task):
-        """
-        публикация контента
-        """
-        logger.info("Publishing content")
-
-    async def handle_fbo_filter(self, task):
-        """
-        УБИРАЕМ 'ЛЕВАК' И МУСОР ИЗ LIVE FBO
-        """
-        logger.info("Filtering FBO noise data")
+    async def stop(self):
+        self.running = False
+        if self.task:
+            self.task.cancel()
