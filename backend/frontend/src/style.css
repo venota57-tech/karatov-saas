@@ -55,3 +55,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .sectionFilters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;background:#fff;border:1px solid #eee;border-radius:18px;padding:12px 14px;margin:0 0 14px 0;box-shadow:0 8px 20px rgba(0,0,0,.04)}
 .productFilterBox.inline{margin:0;min-width:260px;max-width:420px;flex:1}
 .productFilterBox.inline select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:12px;background:#fff}
+input, select { border:1px solid #ddd2c5; border-radius:14px; padding:12px; font-size:15px; background:#fff; color:#24211d; }
+.smallPre { max-height: 260px; overflow:auto; }
+.currentPlatform.ALL{background:#111827;color:#fff}
+.platformBadge{background:#eee9e2;color:#24211d}.platformBadge.WB{background:#eee9ff;color:#5a3cf0}.platformBadge.OZON{background:#e9f2ff;color:#0b3c78}.platformBadge.YM{background:#fff4d6;color:#7a5200}
+.settingCard .reportText{max-height:520px;overflow:auto}.detail h3{margin:0}.detail textarea{min-height:180px}.clientText{font-size:15px}.sectionFilters label{font-size:12px;color:#6c6259;margin:0 0 4px 0}.actions{flex-wrap:wrap}.wide{grid-column:1/-1}
