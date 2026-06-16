@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import os
@@ -5,12 +6,10 @@ import os
 app = FastAPI()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 static_path = os.path.join(BASE_DIR, "../static")
 
-app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
 
-
+# ✅ СНАЧАЛА API
 @app.get("/reviews")
 def reviews():
     return [
@@ -18,3 +17,7 @@ def reviews():
         {"text": "Быстрая доставка"},
         {"text": "Плохое качество"}
     ]
+
+
+# ✅ ПОТОМ фронт (это критично)
+app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
