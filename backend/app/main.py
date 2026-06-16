@@ -1,27 +1,41 @@
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 
-# путь к frontend
-BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR.parent / "frontend"
-
-# статика (css/js если появятся)
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
-
-
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return FileResponse(
-        path=FRONTEND_DIR / "index.html",
-        media_type="text/html"
-    )
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Karatov</title>
+        <style>
+            body { background: #111; color: white; font-family: Arial; padding: 20px; }
+            button { padding: 10px; background: green; color: white; border: none; }
+        </style>
+    </head>
+    <body>
+        <h1>Отзывы</h1>
+        <button onclick="load()">Обновить</button>
+        <div id="reviews"></div>
 
+        <script>
+        async function load() {
+            const r = await fetch('/reviews');
+            const data = await r.json();
+            const el = document.getElementById('reviews');
+            el.innerHTML = data.map(x => '<div>'+x.text+'</div>').join('');
+        }
+        </script>
+    </body>
+    </html>
+    """
 
-# тестовый endpoint (оставь если есть)
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+@app.get("/reviews")
+def reviews():
+    return [
+        {"text": "Отличный товар"},
+        {"text": "Быстрая доставка"},
+        {"text": "Плохое качество"}
+    ]
