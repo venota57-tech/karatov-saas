@@ -3,26 +3,36 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 import os
 
-# твои реальные модули
 from app.ai.answer_generator import AnswerGenerator
-from app.services.autopublish_service import autopublish_reviews
-from app.marketplace_clients.wb import WBClient  # поправил импорт
+from app.services.autopublish_service import autopublish_once
 
-app = FastAPI()
+try:
+    from app.marketplace_clients.wb import WBClient
+except Exception:
+    WBClient = None
 
-# ===== ИНИЦИАЛИЗАЦИЯ =====
+
+app = FastAPI(title="KARATOV CX Hub")
 
 generator = AnswerGenerator()
-wb = WBClient()
+wb = WBClient() if WBClient else None
 
-# ===== РЕАЛЬНЫЕ ОТЗЫВЫ =====
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 
 @app.get("/reviews")
 def get_reviews():
-    try:
-        reviews = wb.get_reviews()
-        return reviews
+    if wb is None:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "WBClient не найден или не инициализировался"}
+        )
 
+    try:
+        return wb.get_reviews()
     except Exception as e:
         return JSONResponse(
             status_code=500,
@@ -30,44 +40,53 @@ def get_reviews():
         )
 
 
-# ===== ГЕНЕРАЦИЯ =====
-
 @app.post("/generate")
 async def generate_answer(req: Request):
     data = await req.json()
 
     try:
-        result = generator.generate_for_review(data)
-        return result
-
+        return generator.generate_for_review(data)
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
-
-# ===== АВТОПАБЛИШ =====
 
 @app.post("/autopublish")
 async def autopublish():
     try:
-        result = autopublish_reviews()
-        return result
-
+        return await autopublish_once()
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
 
-# ===== FRONTEND (REACT) =====
+# ===== FRONTEND =====
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
+assets_path = os.path.join(frontend_path, "assets")
+index_path = os.path.join(frontend_path, "index.html")
 
-# assets (vite)
-app.mount(
-    "/assets",
-    StaticFiles(directory=os.path.join(frontend_path, "assets")),
-    name="assets"
-)
+if os.path.exists(assets_path):
+    app.mount(
+        "/assets",
+        StaticFiles(directory=assets_path),
+        name="assets"
+    )
 
-# главная страница
+
 @app.get("/")
 def serve_frontend():
-    return FileResponse(os.path.join(frontend_path, "index.html"))
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "frontend/dist/index.html не найден",
+            "frontend_path": frontend_path
+        }
+    )
