@@ -10,7 +10,13 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
 
 @app.get("/")
 def root():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return FileResponse(
+        os.path.join(FRONTEND_DIR, "index.html"),
+        media_type="text/html"
+    )
+
+# чтобы js грузился
+app.mount("/src", StaticFiles(directory=os.path.join(FRONTEND_DIR, "src")), name="src")
 
 @app.get("/reviews")
 def get_reviews():
