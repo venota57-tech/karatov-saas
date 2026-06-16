@@ -1,19 +1,21 @@
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+import os
 
 app = FastAPI()
 
-
-@app.get("/reviews")
-def get_reviews():
-    data = [
-        {"text": "Отличный товар"},
-        {"text": "Быстрая доставка"},
-        {"text": "Плохое качество"}
-    ]
-    return JSONResponse(content=data, media_type="application/json; charset=utf-8")
-
+# правильный путь к static
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 @app.get("/")
 def root():
-    return FileResponse("backend/static/index.html")
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+@app.get("/reviews")
+def reviews():
+    return JSONResponse([
+        {"text": "Отличный товар"},
+        {"text": "Быстрая доставка"},
+        {"text": "Плохое качество"}
+    ])
