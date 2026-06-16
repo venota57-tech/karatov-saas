@@ -1,8 +1,10 @@
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+import os
 
 app = FastAPI()
+
 
 @app.get("/reviews")
 def get_reviews():
@@ -14,5 +16,11 @@ def get_reviews():
     return JSONResponse(content=data, media_type="application/json; charset=utf-8")
 
 
-# ВАЖНО: правильный путь
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# 👉 ОТДАЕМ ГЛАВНУЮ СТРАНИЦУ ЯВНО
+@app.get("/")
+def root():
+    return FileResponse("backend/static/index.html")
+
+
+# 👉 СТАТИКА (css/js)
+app.mount("/assets", StaticFiles(directory="backend/static/assets"), name="assets")
