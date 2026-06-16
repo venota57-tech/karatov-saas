@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RefreshCw, MessageSquare, HelpCircle, Send, Sparkles, AlertTriangle, Settings, CheckCircle2, CircleDashed, BarChart3, TrendingUp, CalendarDays, Warehouse, BellRing, Save, PlayCircle } from 'lucide-react';
+import { RefreshCw, MessageSquare, HelpCircle, Send, Sparkles, AlertTriangle, Settings, CheckCircle2, CircleDashed, BarChart3, TrendingUp } from 'lucide-react';
 import './style.css';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -15,12 +15,8 @@ function Badge({children, tone='neutral'}) { return <span className={`badge ${to
 
 function formatDate(value) {
   if (!value) return '—';
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [y,m,d] = value.split('-');
-    return `${d}.${m}.${y}`;
-  }
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString('ru-RU');
 }
 
@@ -97,7 +93,6 @@ const sections = [
   {key:'products', label:'Товары и рейтинги', type:'products', answerState:'all', icon:TrendingUp},
   {key:'anomalies', label:'Аномалии', type:'anomalies', answerState:'all', icon:AlertTriangle},
   {key:'reports', label:'Отчеты и выгрузки', type:'reports', answerState:'all', icon:BarChart3},
-  {key:'fbo-booking', label:'Автобронирование FBO', type:'fboBooking', answerState:'all', icon:CalendarDays},
   {key:'sync-diagnostics', label:'Диагностика синхронизации', type:'sync', answerState:'all', icon:RefreshCw},
   {key:'settings', label:'Правила ИИ', type:'settings', answerState:'all', icon:Settings},
 ];
@@ -123,7 +118,6 @@ function App() {
   const [products, setProducts] = useState([]);
   const [anomalies, setAnomalies] = useState([]);
   const [reports, setReports] = useState({daily: [], pivot: {products_dynamic: [], categories_dynamic: []}, text: ''});
-  const [fboBooking, setFboBooking] = useState(null);
   const [bulkSelected, setBulkSelected] = useState({reviews: new Set(), questions: new Set()});
 
   const params = new URLSearchParams();
@@ -139,12 +133,6 @@ function App() {
   const platformTitle = platformFilter === 'all' ? 'Все площадки' : platformFilter === 'WB' ? 'Wildberries' : platformFilter === 'OZON' ? 'Ozon' : 'Яндекс Маркет';
 
   async function load(active = section) {
-    if (active.type === 'fboBooking') {
-      const data = await api('/fbo-booking/state');
-      setFboBooking(data);
-      return;
-    }
-
     if (active.type === 'reports') {
       const [dailyData, pivotData, textData, summaryData] = await Promise.all([
         api('/reports/daily'),
@@ -263,7 +251,7 @@ function App() {
 
 
   const items = section.type === 'reviews' ? reviews : section.type === 'questions' ? questions : [];
-  const title = section.type === 'settings' ? 'Настройки ИИ, шаблонов и публикации' : section.type === 'fboBooking' ? 'Автобронирование FBO — Wildberries' : (platformPrefix && ['reviews','questions'].includes(section.type) ? platformPrefix + section.label : section.label);
+  const title = section.type === 'settings' ? 'Настройки ИИ, шаблонов и публикации' : (platformPrefix && ['reviews','questions'].includes(section.type) ? platformPrefix + section.label : section.label);
 
   async function generate(item) {
     const endpoint = section.type === 'reviews' ? `/reviews/${item.id}/generate` : `/questions/${item.id}/generate`;
@@ -425,15 +413,15 @@ function App() {
     </aside>
     <main>
       <section className="top">
-        <div><h2>{title}</h2><p>{section.type === 'settings' ? 'Обучай ИИ ответам, редактируй локальные шаблоны и управляй автопубликацией.' : section.type === 'fboBooking' ? 'Календарь целевых дат, правила поиска окон, уведомления и подготовка к автозаписи.' : 'Данные обновляются фоном по расписанию и кнопкой ручной синхронизации.'}</p></div>
-        {summary && section.type !== 'fboBooking' && <div className="cards">
+        <div><h2>{title}</h2><p>{section.type === 'settings' ? 'Обучай ИИ ответам, редактируй локальные шаблоны и управляй автопубликацией.' : 'Данные обновляются фоном по расписанию и кнопкой ручной синхронизации.'}</p></div>
+        {summary && <div className="cards">
           <button onClick={()=>selectSection(sections[0])}><b>{summary.unanswered_reviews}</b><span>отзывов без ответа</span></button>
           <button onClick={()=>selectSection(sections[1])}><b>{summary.answered_reviews ?? navCounts.reviewsAnswered}</b><span>отзывов с ответом</span></button>
           <button onClick={()=>selectSection(sections.find(x=>x.key==='questions-unanswered'))}><b>{summary.unanswered_questions}</b><span>вопросов без ответа</span></button>
           <button onClick={()=>selectSection(sections.find(x=>x.key==='questions-answered'))}><b>{summary.answered_questions ?? navCounts.questionsAnswered}</b><span>вопросов с ответом</span></button>
         </div>}
       </section>
-      {!['settings','fboBooking'].includes(section.type) && <SectionProductFilter section={section} productFilter={productFilter} setProductFilter={setProductFilter} productOptions={productOptions} listFilters={listFilters} setListFilters={setListFilters} />}
+      {section.type !== 'settings' && <SectionProductFilter section={section} productFilter={productFilter} setProductFilter={setProductFilter} productOptions={productOptions} listFilters={listFilters} setListFilters={setListFilters} />}
       {(productFilter || Object.keys(listFilters).length > 0) && <div className="message">Активные фильтры: {productFilter && `товар: ${productFilter}`} {Object.entries(listFilters).map(([k,v]) => v ? `${k}: ${v}` : '').filter(Boolean).join(' · ')} <button onClick={()=>{setProductFilter(''); setListFilters({});}}>Сбросить фильтры</button></div>}
       {message && <div className="message">{message}</div>}
 
@@ -442,7 +430,6 @@ function App() {
        section.type === 'products' ? <ProductsPanel products={products} dynamicFilter={ratingDynamicFilter} setDynamicFilter={setRatingDynamicFilter} setProductFilter={setProductFilter} /> :
        section.type === 'anomalies' ? <AnomaliesPanel anomalies={anomalies} /> :
        section.type === 'reports' ? <ReportsPanel reports={reports} /> :
-       section.type === 'fboBooking' ? <FboBookingPanel state={fboBooking} setState={setFboBooking} setMessage={setMessage} /> :
        section.type === 'sync' ? <SyncDiagnostics status={syncStatus} ozonStatus={ozonStatus} platformFilter={platformFilter} /> :
        <section className="workspace">
         <div className="list">
@@ -796,243 +783,5 @@ function SyncDiagnostics({status, ozonStatus, platformFilter='all'}) {
   </section>
 }
 
-
-function FboBookingPanel({state, setState, setMessage}) {
-  const [form, setForm] = useState(state?.settings || null);
-  const [excludedDate, setExcludedDate] = useState('');
-  const [excludedReason, setExcludedReason] = useState('');
-  const [targetEdits, setTargetEdits] = useState({});
-  const [newTargetDate, setNewTargetDate] = useState('');
-  const [newTargetComment, setNewTargetComment] = useState('');
-  const [wbCabinet, setWbCabinet] = useState(null);
-  const [wbApiBusy, setWbApiBusy] = useState(false);
-  const [wbLive, setWbLive] = useState(null);
-  const [liveOn, setLiveOn] = useState(true);
-  useEffect(() => { if (state?.settings) setForm(state.settings); }, [state]);
-  useEffect(() => {
-    let alive = true;
-    async function pullLive(){
-      if (!liveOn) return;
-      try {
-        const r = await api('/fbo-booking/wb-cabinet/live-status');
-        if (alive) setWbLive(r.live || null);
-      } catch(e) {}
-    }
-    pullLive();
-    const t = setInterval(pullLive, 2000);
-    return () => { alive = false; clearInterval(t); };
-  }, [liveOn]);
-  if (!state || !form) return <div className="empty">Загружаю модуль автобронирования FBO...</div>;
-
-  const targets = state.targets || [];
-  const logs = state.logs || [];
-  const notes = state.notifications || [];
-  const caps = form.wb_api_capabilities || [];
-  const runtime = state.runtime || {};
-  const booked = targets.filter(t => t.status === 'booked').length;
-  const found = targets.filter(t => t.status === 'found').length;
-  const open = targets.filter(t => ['planned','searching','not_found','found','booking'].includes(t.status)).length;
-  const skipped = targets.filter(t => t.status === 'skipped_holiday').length;
-  const update = (patch) => setForm(prev => ({...prev, ...patch}));
-  const toggleWarehouse = (name) => {
-    const current = new Set(form.warehouses || []);
-    if (current.has(name)) current.delete(name); else current.add(name);
-    update({warehouses: Array.from(current)});
-  };
-
-  async function save() {
-    setMessage('Сохраняю настройки ЛК WB-first FBO...');
-    const next = await api('/fbo-booking/settings', {method:'PUT', body: JSON.stringify({...form, search_source_mode:'wb_cabinet', postavleno_enabled:false, wb_api_monitor_enabled:false})});
-    setState(next); setMessage('Настройки FBO сохранены');
-  }
-  async function auditWbApi() {
-    if (wbApiBusy) return;
-    setWbApiBusy(true);
-    setMessage('Проверяю возможности WB API по поставкам. Запросы идут бережно, с паузами...');
-    try {
-      const next = await api('/fbo-booking/wb-api/audit', {method:'POST'});
-      setState(next); setMessage('WB API audit выполнен. Проверь таблицу возможностей.');
-    } finally {
-      setWbApiBusy(false);
-    }
-  }
-  async function monitorWbApi() {
-    if (wbApiBusy) return;
-    setWbApiBusy(true);
-    setMessage('Мониторю окна/коэффициенты через WB API. Повторные клики временно заблокированы...');
-    try {
-      const next = await api('/fbo-booking/wb-api/monitor', {method:'POST'});
-      setState(next); setMessage('WB API мониторинг выполнен. Если найдено окно — дата отмечена в календаре.');
-    } finally {
-      setWbApiBusy(false);
-    }
-  }
-  async function fullWbCycle() {
-    setMessage('Запускаю автопилот через ЛК WB: кабинет → проверка дат → подготовка брони...');
-    const next = await api('/fbo-booking/full-wb-cycle', {method:'POST'});
-    setState(next); setWbCabinet(next.wb_cabinet || null); setMessage('Цикл ЛК WB выполнен. Проверь календарь, скриншот кабинета и журнал.');
-  }
-  async function startWbLogin() {
-    const alias = form.wb_cabinet_profile_alias || 'default';
-    setMessage('Открываю ЛК WB через Playwright. Если будет экран входа — авторизуйся и нажми “Проверить вход”.');
-    const next = await api('/fbo-booking/wb-cabinet/start-login', {method:'POST', body: JSON.stringify({profile_alias: alias})});
-    setState(next); setWbCabinet(next.wb_cabinet || null); setMessage('ЛК WB открыт. Статус: ' + (next.settings?.wb_cabinet_connection_status || '—'));
-  }
-  
-  async function checkWbLogin() {
-    const alias = form.wb_cabinet_profile_alias || 'default';
-    setMessage('Проверяю авторизацию в ЛК WB...');
-    const next = await api('/fbo-booking/wb-cabinet/check-login', {method:'POST', body: JSON.stringify({profile_alias: alias})});
-    setState(next); setWbCabinet(next.wb_cabinet || null); setMessage('Статус ЛК WB: ' + (next.settings?.wb_cabinet_connection_status || '—'));
-  }
-  async function monitorWbCabinet() {
-    const alias = form.wb_cabinet_profile_alias || 'default';
-    setMessage('Проверяю окна через ЛК WB без обращения к API...');
-    const next = await api('/fbo-booking/wb-cabinet/monitor', {method:'POST', body: JSON.stringify({profile_alias: alias})});
-    setState(next); setWbCabinet(next.wb_cabinet || null); setMessage('Мониторинг ЛК WB выполнен. Проверь календарь, скриншот и журнал.');
-  }
-  async function prepareWbBooking() {
-    const alias = form.wb_cabinet_profile_alias || 'default';
-    setMessage('Готовлю маршрут создания поставки в ЛК WB. Live View обновляется каждые 2 секунды...');
-    setLiveOn(true);
-    const next = await api('/fbo-booking/wb-cabinet/book-next', {method:'POST', body: JSON.stringify({profile_alias: alias})});
-    setState(next); setWbCabinet(next.wb_cabinet || null); setMessage('Маршрут ЛК WB завершен. Проверь Live View, журнал и календарь.');
-  }
-  async function stopWbRoute() {
-    const r = await api('/fbo-booking/wb-cabinet/stop-route', {method:'POST'});
-    setWbLive(r.live || null);
-    setMessage('Отправила команду остановки маршрута ЛК WB');
-  }
-  async function runNow() {
-    setMessage('Запускаю безопасную проверку FBO...');
-    const next = await api('/fbo-booking/run-now', {method:'POST'});
-    setState(next); setMessage('Проверка FBO выполнена.');
-  }
-  async function addHoliday() {
-    if (!excludedDate) { setMessage('Укажи дату исключения.'); return; }
-    const next = await api('/fbo-booking/excluded-dates', {method:'POST', body: JSON.stringify({date: excludedDate, reason: excludedReason})});
-    setState(next); setExcludedDate(''); setExcludedReason(''); setMessage('Дата добавлена в исключения');
-  }
-  async function testTelegram() {
-    const r = await api('/fbo-booking/test-telegram', {method:'POST'});
-    setMessage(r.ok ? 'Тест Telegram отправлен' : `Telegram не отправлен: ${r.message}`);
-  }
-  async function testEmail() {
-    const r = await api('/fbo-booking/test-email', {method:'POST'});
-    setMessage(r.ok ? 'Тест email отправлен' : `Email не отправлен: ${r.message}`);
-  }
-  async function addCalendarTarget() {
-    if (!newTargetDate) { setMessage('Укажи новую дату для календаря окон.'); return; }
-    const next = await api('/fbo-booking/targets', {method:'POST', body: JSON.stringify({date: newTargetDate, comment: newTargetComment})});
-    setState(next); setNewTargetDate(''); setNewTargetComment(''); setMessage('Новая дата добавлена в календарь FBO');
-  }
-  async function saveTargetDate(oldDate) {
-    const edit = targetEdits[oldDate];
-    if (!edit?.date) { setMessage('Укажи новую дату.'); return; }
-    const next = await api(`/fbo-booking/targets/${oldDate}`, {method:'PATCH', body: JSON.stringify({new_date: edit.date, comment: edit.comment || ''})});
-    setState(next); setTargetEdits(prev => { const copy = {...prev}; delete copy[oldDate]; return copy; }); setMessage('Дата в календаре FBO изменена');
-  }
-  const statusTone = (s) => s === 'booked' ? 'green' : s === 'found' ? 'green' : s === 'booking' ? 'yellow' : s === 'error' ? 'red' : s === 'skipped_holiday' ? 'yellow' : 'neutral';
-  const capTone = (s) => s === 'ok' ? 'green' : s === 'warning' ? 'yellow' : s === 'error' ? 'red' : 'neutral';
-
-  return <section className="settingsPanel fboPanel">
-    <div className="fboHero">
-      <div><h2>Автобронирование FBO — ЛК WB-first</h2><p>Первоисточник слотов — кабинет продавца WB. API больше не является основным мониторингом, поэтому 429 не останавливает автопилот.</p></div>
-      <Badge tone={form.enabled ? 'green' : 'yellow'}>{form.enabled ? 'Активно' : 'Выключено'}</Badge>
-    </div>
-    <div className="fboCards">
-      <div className="fboCard"><span>Старт</span><b>{formatDate(form.start_date)}</b></div>
-      <div className="fboCard"><span>Открытых дат</span><b>{open}</b></div>
-      <div className="fboCard"><span>Найдено WB</span><b>{found}</b></div>
-      <div className="fboCard"><span>Забронировано</span><b>{booked}</b></div>
-      <div className="fboCard"><span>Исключено</span><b>{skipped}</b></div>
-    </div>
-
-    <div className="settingCard wide autopilotStatus">
-      <h3>Автопилот через ЛК WB</h3>
-      <div className="metricRow"><span>Состояние</span><b>{runtime.running ? 'работает' : 'выключен'}</b></div>
-      <div className="metricRow"><span>Последний цикл</span><b>{form.scheduler_last_finished_at ? formatDate(form.scheduler_last_finished_at) : '—'}</b></div>
-      <div className="metricRow"><span>Следующий автоповтор</span><b>{form.scheduler_next_retry_at || runtime.next_retry_at ? formatDate(form.scheduler_next_retry_at || runtime.next_retry_at) : 'по интервалу'}</b></div>
-      <p className="meta">{runtime.last_message || 'Автопоиск сам открывает ЛК WB в рабочее окно, проверяет целевые даты и перезапускается без ручного клика. WB API используется только для диагностики.'}</p>
-      {runtime.last_error && <p className="errorText">{runtime.last_error}</p>}
-    </div>
-
-    <div className="fboGrid">
-      <div className="settingCard wide">
-        <h3>Правила FBO</h3>
-        <div className="fboTwo">
-          <label>Склады WB</label><div className="checks"><label><input type="checkbox" checked={(form.warehouses||[]).includes('Коледино')} onChange={()=>toggleWarehouse('Коледино')}/> Коледино</label><label><input type="checkbox" checked={(form.warehouses||[]).includes('Электросталь')} onChange={()=>toggleWarehouse('Электросталь')}/> Электросталь</label></div>
-          <label>Тип поставки</label><input value={form.supply_type || 'Суперсейф'} onChange={e=>update({supply_type:e.target.value})}/>
-          <label>Макс. коэффициент</label><input type="number" value={form.max_coefficient || 20} onChange={e=>update({max_coefficient:Number(e.target.value)})}/>
-          <label>Дата старта</label><input type="date" value={form.start_date || ''} onChange={e=>update({start_date:e.target.value})}/>
-          <label>Шаг, рабочих дней</label><input type="number" value={form.step_working_days || 3} onChange={e=>update({step_working_days:Number(e.target.value)})}/>
-          <label>Горизонт, дней</label><input type="number" value={form.planning_horizon_days || 30} onChange={e=>update({planning_horizon_days:Number(e.target.value)})}/>
-          <label>Поиск с</label><input type="time" value={form.search_from || '09:00'} onChange={e=>update({search_from:e.target.value})}/>
-          <label>Поиск до</label><input type="time" value={form.search_to || '21:00'} onChange={e=>update({search_to:e.target.value})}/>
-          <label>Интервал проверки ЛК WB, сек</label><input type="number" value={form.check_interval_seconds || 300} onChange={e=>update({check_interval_seconds:Number(e.target.value), wb_cabinet_check_interval_seconds:Number(e.target.value)})}/>
-          <label>Пауза после ошибки ЛК WB, сек</label><input type="number" value={form.wb_cabinet_error_backoff_seconds || 120} onChange={e=>update({wb_cabinet_error_backoff_seconds:Number(e.target.value)})}/>
-          <label>Профиль ЛК WB</label><input value={form.wb_cabinet_profile_alias || 'default'} onChange={e=>update({wb_cabinet_profile_alias:e.target.value})}/><label>Кол-во первого товара</label><input type="number" value={form.wb_cabinet_template_quantity || 1000} onChange={e=>update({wb_cabinet_template_quantity:Number(e.target.value)})}/><label>Склад по умолчанию для черновика</label><select value={form.wb_cabinet_default_warehouse || 'Электросталь'} onChange={e=>update({wb_cabinet_default_warehouse:e.target.value})}><option>Электросталь</option><option>Коледино</option></select><label>Режим бронирования</label><select value={form.wb_cabinet_real_booking_enabled && form.wb_cabinet_safe_mode === false ? 'real' : 'test'} onChange={e=>update({wb_cabinet_booking_mode:e.target.value, wb_cabinet_real_booking_enabled:e.target.value==='real', wb_cabinet_safe_mode:e.target.value!=='real'})}><option value="test">Тестовый: дойти до финального экрана, не создавать поставку</option><option value="real">Боевой: нажать “Создать поставку” и отправить уведомление</option></select>
-          <label>Ожидаемый ЛК WB</label><input value={form.wb_cabinet_expected_company || 'ГОЛДСТАРТ ООО'} onChange={e=>update({wb_cabinet_expected_company:e.target.value})}/><label>Распознанный ЛК WB</label><input readOnly value={form.wb_cabinet_detected_company || '—'}/><label>Подтверждение боевого режима</label><input placeholder={'Создавать поставки в ' + (form.wb_cabinet_expected_company || 'ГОЛДСТАРТ ООО')} value={form.wb_cabinet_final_confirmation_text || ''} onChange={e=>update({wb_cabinet_final_confirmation_text:e.target.value})}/><label>URL ЛК WB</label><input value={form.wb_cabinet_url || 'https://seller.wildberries.ru'} onChange={e=>update({wb_cabinet_url:e.target.value})}/>
-        </div>
-        <label className="check"><input type="checkbox" checked={form.scheduler_enabled !== false} onChange={e=>update({scheduler_enabled:e.target.checked})}/> Автопилот включен: мониторить ЛК WB по расписанию и перезапускаться автоматически</label>
-        <label className="check"><input type="checkbox" checked={form.auto_book !== false} onChange={e=>update({auto_book:e.target.checked})}/> Автоматически готовить черновик/бронь после найденного окна</label>
-        <label className="check"><input type="checkbox" checked={form.wb_cabinet_real_booking_enabled === true && form.wb_cabinet_safe_mode === false} onChange={e=>update({wb_cabinet_real_booking_enabled:e.target.checked, wb_cabinet_safe_mode:!e.target.checked, wb_cabinet_booking_mode:e.target.checked?'real':'test'})}/> Боевой режим: нажимать “Создать поставку” после выбора даты</label>
-        <label className="check"><input type="checkbox" checked={form.wb_cabinet_require_final_confirmation !== false} onChange={e=>update({wb_cabinet_require_final_confirmation:e.target.checked})}/> Перед финальной кнопкой требовать текстовое подтверждение ЛК</label>
-        <label className="check"><input type="checkbox" checked={form.postavleno_enabled === true} onChange={e=>update({postavleno_enabled:e.target.checked})}/> POSTAVLENO только как ручной внешний сигнал</label>
-        <div className="actions"><button className="primary" onClick={save}>Сохранить настройки</button><button onClick={runNow}>Пересобрать календарь</button></div>
-      </div>
-
-      <div className="settingCard">
-        <h3>Уведомления</h3>
-        <div className="metricRow"><span>Telegram</span><b>{form.telegram_enabled ? 'включен' : 'выключен'}</b></div>
-        <div className="metricRow"><span>Email</span><b>{form.email_enabled ? 'включен' : 'выключен'}</b></div>
-        <div className="actions vertical"><button onClick={testTelegram}>Отправить тест Telegram</button><button onClick={testEmail}>Отправить тест email</button></div>
-        <h3>Праздники / ТК не возит</h3>
-        <div className="holidayBox"><input type="date" value={excludedDate} onChange={e=>setExcludedDate(e.target.value)}/><input placeholder="Причина" value={excludedReason} onChange={e=>setExcludedReason(e.target.value)}/><button onClick={addHoliday}>Добавить</button></div>
-        <div className="miniList">{(form.excluded_dates || []).length ? form.excluded_dates.map(d => <Badge tone="yellow" key={d}>{d}</Badge>) : <span className="meta">Исключений пока нет</span>}</div>
-      </div>
-    </div>
-
-    <div className="fboGrid">
-      <div className="settingCard wide">
-        <h3>WB API: только диагностика</h3>
-        <p className="meta">API больше не основной способ поиска окон. Основной мониторинг идет через ЛК WB, чтобы не зависеть от 429. Этот блок оставлен только для редкой диагностики токена/коэффициентов.</p>
-        <p className="meta"><b>Бережный режим WB API:</b> пауза между запросами, кэш коэффициентов на 15 минут, складов на сутки, поставок на 5 минут. При 429 хаб ставит мониторинг на паузу.</p>
-        <div className="actions"><button className="primary" disabled={wbApiBusy} onClick={auditWbApi}>{wbApiBusy ? 'WB API занят...' : 'Проверить возможности WB API'}</button><button className="primary" disabled={wbApiBusy} onClick={fullWbCycle}>Запустить цикл ЛК WB сейчас</button></div>
-        <div className="metricRow"><span>Последний audit</span><b>{form.wb_api_last_audit_at ? formatDate(form.wb_api_last_audit_at) : '—'}</b></div>
-        <div className="metricRow"><span>Последний мониторинг ЛК WB</span><b>{form.wb_cabinet_monitor_last_at ? formatDate(form.wb_cabinet_monitor_last_at) : '—'}</b></div>
-        {form.wb_api_last_error && <p className="errorText">WB API: {form.wb_api_last_error}</p>}
-        <table><thead><tr><th>Проверка</th><th>Статус</th><th>HTTP</th><th>Детали</th></tr></thead><tbody>{caps.map((c,i)=><tr key={i}><td><b>{c.name}</b><p className="meta">{c.description}</p></td><td><Badge tone={capTone(c.status)}>{c.status}</Badge></td><td>{c.status_code || '—'}</td><td className="apiDetails">{String(c.details || '').slice(0,360)}</td></tr>)}</tbody></table>
-        {caps.length===0 && <p className="meta">Audit еще не запускался.</p>}
-      </div>
-      <div className="settingCard wide">
-        <h3>ЛК WB / Playwright safe-mode</h3>
-        <div className="metricRow"><span>Статус ЛК WB</span><b>{form.wb_cabinet_connection_status || 'not_connected'}</b></div>
-        <div className="metricRow"><span>Профиль</span><b>{form.wb_cabinet_profile_alias || 'default'}</b></div>
-        <p className="meta">Хаб открывает только домен ЛК WB. Маршрут: Черновики → Новая поставка → Вручную → первый товар, 1000 шт → склад/Суперсейф → дата → пропуск упаковки/ШК → финал. В тестовом режиме финальная кнопка не нажимается.</p>
-        <div className="actions vertical"><button onClick={startWbLogin}>1. Открыть ЛК WB</button><button onClick={checkWbLogin}>2. Проверить вход</button><button onClick={monitorWbCabinet}>3. Мониторить окна через ЛК WB</button><button className="primary" onClick={prepareWbBooking}>4. Запустить маршрут создания поставки</button><button className="dangerBtn" onClick={stopWbRoute}>Остановить маршрут</button></div>
-        <div className="wbLiveBox"><div className="wbLiveHeader"><b>Live View ЛК WB</b><Badge tone={(wbLive?.running) ? 'yellow' : 'neutral'}>{wbLive?.running ? 'выполняется' : 'ожидает'}</Badge></div><div className="metricRow"><span>Текущий шаг</span><b>{wbLive?.step || form.wb_cabinet_last_route_step || '—'}</b></div><div className="metricRow"><span>Прогресс</span><b>{wbLive?.step_index || 0}/{wbLive?.total_steps || 15}</b></div><div className="metricRow"><span>ЛК WB</span><b>{wbLive?.detected_company || form.wb_cabinet_detected_company || 'не распознан'}</b></div>{wbLive?.error && <p className="errorText">{wbLive.error}</p>}{(wbLive?.screenshot_base64 || wbCabinet?.screenshot_base64 || form.wb_cabinet_last_screenshot) && <div className="wbLiveShot"><img src={'data:image/png;base64,' + (wbLive?.screenshot_base64 || wbCabinet?.screenshot_base64 || form.wb_cabinet_last_screenshot)} alt="WB cabinet live screenshot" /></div>}</div>
-      </div>
-    </div>
-
-    <div className="settingCard wide">
-      <h3>Календарь окон на месяц вперед</h3>
-      <div className="holidayBox calendarAddRow"><input type="date" value={newTargetDate} onChange={e=>setNewTargetDate(e.target.value)}/><input placeholder="Комментарий к новой дате" value={newTargetComment} onChange={e=>setNewTargetComment(e.target.value)}/><button onClick={addCalendarTarget}>Добавить дату</button></div>
-      <p className="meta">Дату можно изменить прямо в строке. Старую дату хаб добавит в исключения, чтобы она не вернулась автоматическим правилом.</p>
-      <table><thead><tr><th>Дата</th><th>WB статус</th><th>Склад</th><th>Время</th><th>Коэффициент</th><th>Черновик</th><th>Комментарий</th><th></th></tr></thead>
-      <tbody>{targets.map(t => { const edit = targetEdits[t.date] || {date:t.date, comment:''}; const changed = edit.date !== t.date || !!edit.comment; return <tr key={t.date}>
-        <td><input className="inlineDate" type="date" value={edit.date} onChange={e=>setTargetEdits(prev=>({...prev, [t.date]: {...(prev[t.date] || {date:t.date, comment:''}), date:e.target.value}}))}/>{t.manual && <Badge tone="neutral">ручная</Badge>}</td>
-        <td><Badge tone={statusTone(t.status)}>{t.status_label || t.status}</Badge></td><td>{t.warehouse || '—'}</td><td>{t.slot_time || '—'}</td><td>{t.coefficient ?? '—'}</td><td>{t.draft_id || '—'}</td>
-        <td><div>{t.message || '—'}</div><input className="inlineComment" placeholder="Комментарий к изменению" value={edit.comment || ''} onChange={e=>setTargetEdits(prev=>({...prev, [t.date]: {...(prev[t.date] || {date:t.date, comment:''}), comment:e.target.value}}))}/></td>
-        <td>{changed && <button className="primary" onClick={()=>saveTargetDate(t.date)}>сохранить дату</button>}</td>
-      </tr> })}</tbody></table>
-    </div>
-
-    <div className="fboGrid">
-      <div className="settingCard"><h3>Внутренние уведомления</h3>{(notes || []).slice(0,8).map((n,i) => <div className="notificationRow" key={i}><Badge tone={n.level === 'success' ? 'green' : n.level === 'error' ? 'red' : 'neutral'}>{n.level}</Badge><b>{n.title}</b><p>{n.body}</p><span>{formatDate(n.created_at)}</span></div>)}{(!notes || notes.length===0) && <p className="meta">Уведомлений пока нет.</p>}</div>
-      <div className="settingCard"><h3>Журнал действий</h3><table><thead><tr><th>Дата</th><th>Действие</th><th>Результат</th><th>Детали</th></tr></thead><tbody>{logs.slice(0,10).map((l,i)=><tr key={i}><td>{formatDate(l.created_at)}</td><td>{l.action}</td><td>{l.result}</td><td>{l.details}</td></tr>)}</tbody></table></div>
-    </div>
-  </section>
-}
 
 createRoot(document.getElementById('root')).render(<App/>);

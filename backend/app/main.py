@@ -1,101 +1,44 @@
+import asyncio
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-import requests
-import os
-
-from app.db import SessionLocal, engine
-from app.models import Base, Review
-
-app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
+from .database import Base, engine, run_lightweight_migrations
+from .routes import reviews, questions, sync, ozon_sync, summary, analytics, reports, settings as settings_routes, autopublish_settings
+from .services.sync_service import wb_auto_sync_loop
+from .services.ozon_sync_service import ozon_auto_sync_loop
 
 Base.metadata.create_all(bind=engine)
+run_lightweight_migrations()
 
-WB_API_KEY = os.getenv("WB_API_KEY")
-OZON_API_KEY = os.getenv("OZON_API_KEY")
-OZON_CLIENT_ID = os.getenv("OZON_CLIENT_ID")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+app = FastAPI(title='KARATOV Marketplace CX Hub', version='3.1.0')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 
+app.include_router(sync.router)
+app.include_router(ozon_sync.router)
+app.include_router(reviews.router)
+app.include_router(questions.router)
+app.include_router(summary.router)
+app.include_router(analytics.router)
+app.include_router(settings_routes.router)
+app.include_router(autopublish_settings.router)
+app.include_router(reports.router)
 
-# 🔥 теперь GET чтобы можно было дергать из браузера
-@app.get("/sync-wb")
-def sync_wb():
-    url = "https://feedbacks-api.wildberries.ru/api/v1/feedbacks"
+@app.on_event('startup')
+async def startup_event():
+    asyncio.create_task(wb_auto_sync_loop())
+    asyncio.create_task(ozon_auto_sync_loop())
 
-    headers = {
-        "Authorization": WB_API_KEY
-    }
+    try:
+        from .services.autopublish_service import autopublish_loop
+        asyncio.create_task(autopublish_loop())
+    except Exception as e:
+        print(f'[autopublish] failed to start: {e}')
 
-    params = {
-        "isAnswered": False,
-        "take": 20,
-        "skip": 0
-    }
-
-    response = requests.get(url, headers=headers, params=params)
-
-    if response.status_code != 200:
-        return {"error": response.text}
-
-    data = response.json()
-
-    db = SessionLocal()
-
-    added = 0
-
-    for item in data.get("data", {}).get("feedbacks", []):
-        text = item.get("text", "")
-
-        exists = db.query(Review).filter(Review.text == text).first()
-        if exists:
-            continue
-
-        db.add(Review(
-            marketplace="wb",
-            text=text,
-            status="new"
-        ))
-        added += 1
-
-    db.commit()
-
-    return {"status": "ok", "added": added}
-
-
-@app.get("/reviews")
-def get_reviews():
-    db = SessionLocal()
-    return db.query(Review).order_by(Review.id.desc()).all()
-
-
-@app.post("/generate/{review_id}")
-def generate(review_id: int):
-    db = SessionLocal()
-    review = db.query(Review).get(review_id)
-
-    prompt = f"Ответь на отзыв клиента:\n\n{review.text}"
-
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
-        }
-    )
-
-    result = response.json()
-
-    review.answer = result["choices"][0]["message"]["content"]
-    review.status = "done"
-
-    db.commit()
-
-    return {"ok": True}
-
-
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+@app.get('/health')
+def health():
+    return {'status': 'ok'}

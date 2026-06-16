@@ -52,18 +52,6 @@ class Settings(BaseSettings):
     wb_feedback_count_diagnostics_enabled: bool = False
     ai_auto_classify_on_sync: bool = True
 
-    # FBO autobooking notifications
-    telegram_bot_token: str = ''
-    telegram_chat_id: str = ''
-    smtp_host: str = ''
-    smtp_port: int = 587
-    smtp_user: str = ''
-    smtp_password: str = ''
-    smtp_use_tls: bool = True
-    email_from: str = ''
-    email_to: str = ''
-    fbo_booking_state_path: str = '/app/fbo_booking_state.json'
-
     def effective_wb_sync_mode(self) -> str:
         mode = (self.wb_sync_mode or '').strip().lower()
         if mode in {'answered', 'unanswered', 'both'}:
