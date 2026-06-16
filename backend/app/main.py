@@ -13,4 +13,6 @@ def get_reviews():
     ]
     return JSONResponse(content=data, media_type="application/json; charset=utf-8")
 
-app.mount("/", StaticFiles(directory="backend/static", html=True), name="static")
+
+# ВАЖНО: правильный путь
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
