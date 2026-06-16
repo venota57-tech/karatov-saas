@@ -11,7 +11,8 @@ from app.services.autopublish_service import autopublish_once
 
 try:
     from app.services.sync_service import wb_auto_sync_loop, get_sync_status
-except Exception:
+except Exception as e:
+    print(f"[startup] sync service unavailable: {e}")
     wb_auto_sync_loop = None
     get_sync_status = None
 
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
     tasks = []
 
     if wb_auto_sync_loop:
+        print("[startup] starting WB auto sync loop")
         tasks.append(asyncio.create_task(wb_auto_sync_loop()))
 
     yield
@@ -33,8 +35,6 @@ app = FastAPI(title="KARATOV CX Hub", lifespan=lifespan)
 
 generator = AnswerGenerator()
 
-
-# ===== ROUTERS =====
 
 def include_router_safe(module_path: str, router_name: str = "router"):
     try:
@@ -57,8 +57,6 @@ include_router_safe("app.routes.analytics")
 include_router_safe("app.routes.ozon_sync")
 
 
-# ===== HEALTH / DIAGNOSTICS =====
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -67,6 +65,7 @@ def health():
 @app.get("/system/status")
 def system_status():
     sync = None
+
     if get_sync_status:
         try:
             sync = get_sync_status()
@@ -93,8 +92,6 @@ def system_status():
     }
 
 
-# ===== FALLBACK API =====
-
 @app.post("/generate")
 async def generate_answer(req: Request):
     data = await req.json()
@@ -112,8 +109,6 @@ async def autopublish():
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-
-# ===== FRONTEND =====
 
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 assets_path = os.path.join(frontend_path, "assets")
