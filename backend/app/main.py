@@ -4,18 +4,25 @@ import os
 
 app = FastAPI()
 
-# правильный путь к static
+# абсолютный путь к папке static
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
+
+# главная страница (UI)
 @app.get("/")
 def root():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
+
+# API с правильной кодировкой
 @app.get("/reviews")
 def reviews():
-    return JSONResponse([
-        {"text": "Отличный товар"},
-        {"text": "Быстрая доставка"},
-        {"text": "Плохое качество"}
-    ])
+    return JSONResponse(
+        content=[
+            {"text": "Отличный товар"},
+            {"text": "Быстрая доставка"},
+            {"text": "Плохое качество"}
+        ],
+        media_type="application/json; charset=utf-8"
+    )
