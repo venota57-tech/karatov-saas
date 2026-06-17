@@ -44,6 +44,10 @@ def _walk(obj: Any, keys: set[str]):
     return None
 
 
+def _has_meaningful_text(*values: Any) -> bool:
+    return any(str(v or '').strip() for v in values)
+
+
 def normalize_ozon_review(item: dict[str, Any], *, source_status: str, operational_status: str, has_answer: bool) -> dict[str, Any]:
     review_id = _first_present(item, ['id', 'review_id', 'reviewId', 'uuid']) or _walk(item, {'id','review_id','reviewId','uuid'})
     product_id = _first_present(item, ['product_id', 'productId', 'sku', 'offer_id', 'offerId']) or _walk(item, {'product_id','productId','sku','offer_id','offerId'})
@@ -58,6 +62,15 @@ def normalize_ozon_review(item: dict[str, Any], *, source_status: str, operation
     cons = _first_present(item, ['cons','disadvantages','negative'])
     answer_text = _first_present(item, ['answer','answer_text','answerText','comment_text','commentText','seller_comment']) or _walk(item, {'answer_text','answerText','comment_text','commentText','seller_comment'})
     created = _first_present(item, ['published_at','created_at','date','createdAt','publishedAt'])
+
+    has_text = _has_meaningful_text(text, pros, cons)
+    is_no_text_ozon_rating = not has_text
+    if is_no_text_ozon_rating:
+        # Ozon не позволяет отвечать на оценки без текста. Не считаем их операционной очередью.
+        operational_status = 'no_text_rating'
+        has_answer = True
+        source_status = source_status or 'ozon_no_text_rating'
+
     return {
         'platform': 'OZON',
         'external_id': str(review_id),
@@ -72,12 +85,17 @@ def normalize_ozon_review(item: dict[str, Any], *, source_status: str, operation
         'has_answer': bool(has_answer or answer_text),
         'final_answer': str(answer_text) if answer_text else None,
         'response_origin': 'seller_cabinet' if bool(has_answer or answer_text) and answer_text else None,
-        'raw': item,
-        'source_status': source_status,
+        'raw': {**item, '_cx_no_text_rating': is_no_text_ozon_rating},
+        'source_status': 'ozon_no_text_rating' if is_no_text_ozon_rating else source_status,
         'operational_status': operational_status,
-        'last_seen_source': source_status,
+        'last_seen_source': 'ozon_no_text_rating' if is_no_text_ozon_rating else source_status,
         'last_seen_at': datetime.utcnow(),
-        'publish_blocked_reason': None if operational_status == 'needs_response' else 'Не находится в актуальной очереди Ozon “без ответа”; публикация из этого раздела заблокирована.',
+        'publish_blocked_reason': 'Ozon не позволяет отвечать на оценки без текста. AI и шаблоны не используются.' if is_no_text_ozon_rating else (None if operational_status == 'needs_response' else 'Не находится в актуальной очереди Ozon “без ответа”; публикация из этого раздела заблокирована.'),
+        'ai_category': 'оценка без комментария' if is_no_text_ozon_rating else None,
+        'ai_sentiment': 'neutral' if is_no_text_ozon_rating else None,
+        'ai_risk_level': 'low' if is_no_text_ozon_rating else None,
+        'ai_tags': ['без комментария', 'не требует ответа'] if is_no_text_ozon_rating else None,
+        'ai_reason': 'Оценка без текста: ответ на Ozon невозможен.' if is_no_text_ozon_rating else None,
     }
 
 
@@ -193,6 +211,43 @@ class OzonClient:
             except Exception as exc:
                 attempts.append({'endpoint': path, 'payload': payload, 'error': str(exc)[:1000]})
         raise RuntimeError({'attempts': attempts})
+
+    async def _list_with_cursor(self, path: str, payload: dict[str, Any], *, info_path: str | None = None, id_keys: set[str] | None = None, id_field: str = 'id') -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        data = await self._post(path, payload)
+        items = self._extract_items(data)
+        enrich_diag = {'enriched': 0, 'info_errors': 0}
+        if items and info_path and id_keys:
+            items, enrich_diag = await self._enrich_items(items, info_path=info_path, id_keys=id_keys, id_field=id_field, max_items=int(payload.get('limit') or len(items)))
+        result = data.get('result', data) if isinstance(data, dict) else {}
+        has_next = False
+        last_id = None
+        if isinstance(result, dict):
+            has_next = bool(result.get('has_next') or result.get('hasNext'))
+            last_id = result.get('last_id') or result.get('lastId')
+        if isinstance(data, dict):
+            has_next = has_next or bool(data.get('has_next') or data.get('hasNext'))
+            last_id = last_id or data.get('last_id') or data.get('lastId')
+        return items, {
+            'endpoint': path,
+            'payload': payload,
+            'raw_keys': list(data.keys()) if isinstance(data, dict) else type(data).__name__,
+            'received': len(items),
+            'has_next': has_next,
+            'last_id': last_id,
+            **enrich_diag,
+        }
+
+    async def get_reviews_unanswered_page(self, limit: int = 100, last_id: str | None = None):
+        payload = {'limit': limit, 'status': 'UNPROCESSED'}
+        if last_id:
+            payload['last_id'] = last_id
+        return await self._list_with_cursor('/v1/review/list', payload, info_path='/v1/review/info', id_keys={'id','review_id','reviewId','uuid'}, id_field='review_id')
+
+    async def get_reviews_answered_page(self, limit: int = 100, last_id: str | None = None):
+        payload = {'limit': limit, 'status': 'PROCESSED'}
+        if last_id:
+            payload['last_id'] = last_id
+        return await self._list_with_cursor('/v1/review/list', payload, info_path='/v1/review/info', id_keys={'id','review_id','reviewId','uuid'}, id_field='review_id')
 
     async def get_reviews_unanswered(self, limit: int = 100):
         payloads = [

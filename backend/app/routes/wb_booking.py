@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+import asyncio
+from datetime import datetime, timezone, timedelta, time
+from typing import Any
+
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..config import settings
+
 router = APIRouter(prefix="/wb-booking", tags=["wb-booking"])
 
-_state = {
+_state: dict[str, Any] = {
     "enabled": False,
     "mode": "monitor_only",
     "warehouses": ["Коледино", "Электросталь"],
@@ -18,17 +24,19 @@ _state = {
     "work_time_from": "09:00",
     "work_time_to": "21:00",
     "telegram_enabled": True,
-    "telegram_connected": True,
-    "telegram_status": "Подключен через существующую группу/бота. Chat ID в интерфейсе не требуется.",
+    "telegram_connected": bool(settings.telegram_bot_token and settings.telegram_chat_id),
+    "telegram_status": "Подключен" if (settings.telegram_bot_token and settings.telegram_chat_id) else "Нужны TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в Render Environment",
     "email_enabled": False,
     "email_recipients": [],
     "last_check_at": None,
+    "last_notification_at": None,
     "last_error": None,
     "events": [],
     "found_slots": [],
     "booking_history": [],
 }
 
+_lock = asyncio.Lock()
 
 class BookingConfig(BaseModel):
     enabled: bool = False
@@ -47,14 +55,14 @@ class BookingConfig(BaseModel):
     email_recipients: list[str] = []
 
 
-def _now():
+def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _event(kind: str, message: str, payload: dict | None = None):
     row = {"at": _now(), "kind": kind, "message": message, "payload": payload or {}}
     _state["events"].insert(0, row)
-    _state["events"] = _state["events"][:200]
+    _state["events"] = _state["events"][:300]
     return row
 
 
@@ -86,10 +94,29 @@ def _workdays_schedule(start_date: str | None, every: int, horizon: int):
     return result[:80]
 
 
+def _parse_hhmm(value: str, default: time) -> time:
+    try:
+        hh, mm = str(value).split(":")[:2]
+        return time(int(hh), int(mm))
+    except Exception:
+        return default
+
+
+def _in_work_window() -> bool:
+    now = datetime.now().time()
+    start = _parse_hhmm(_state.get("work_time_from") or "09:00", time(9, 0))
+    end = _parse_hhmm(_state.get("work_time_to") or "21:00", time(21, 0))
+    if start <= end:
+        return start <= now <= end
+    return now >= start or now <= end
+
+
 def _status_payload():
     every = _as_int(_state.get("every_n_workdays"), 3)
     horizon = _as_int(_state.get("horizon_days"), 30)
     planned = _workdays_schedule(_state.get("start_date"), every, horizon)
+    _state["telegram_connected"] = bool(settings.telegram_bot_token and settings.telegram_chat_id)
+    _state["telegram_status"] = "Подключен через @KARATOV_FBO_Booking_Bot" if _state["telegram_connected"] else "Нужны TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в Render Environment"
     return {
         **_state,
         "planned_dates": planned,
@@ -107,7 +134,7 @@ def _status_payload():
                 "recipients_count": len(_state.get("email_recipients") or []),
             },
         },
-        "description": "Slot Hunter работает по API-first логике: проверка окон/коэффициентов, сверка с расписанием, уведомление Telegram/email, затем ручная или автоматическая бронь при подключении метода бронирования.",
+        "description": "Slot Hunter работает по API-first логике: расписание поставок → проверка окон/коэффициентов → Telegram/email уведомление → бронь после подключения безопасного WB API adapter.",
         "safety": [
             "Не ходим в ЛК WB браузером как человек в основном сценарии.",
             "Ищем только даты из заданного графика, а не случайные окна.",
@@ -115,6 +142,31 @@ def _status_payload():
             "Автобронь включается только после проверки monitor_only на реальных данных.",
         ],
     }
+
+
+async def _send_telegram(text: str) -> dict[str, Any]:
+    if not _state.get("telegram_enabled"):
+        return {"ok": False, "skipped": True, "reason": "telegram_disabled"}
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        return {"ok": False, "skipped": True, "reason": "telegram_env_missing"}
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(url, json={"chat_id": settings.telegram_chat_id, "text": text})
+    if response.status_code >= 400:
+        return {"ok": False, "status_code": response.status_code, "body": response.text[:500]}
+    _state["last_notification_at"] = _now()
+    return {"ok": True}
+
+
+async def _notify_no_slots() -> dict[str, Any]:
+    text = (
+        "WB FBO: окна пока не найдены\n"
+        f"Автопоиск продолжает работу по расписанию {_state.get('work_time_from','09:00')}–{_state.get('work_time_to','21:00')}. "
+        "Следующая попытка будет выполнена автоматически."
+    )
+    result = await _send_telegram(text)
+    _event("telegram_notification", text, result)
+    return result
 
 
 @router.get("/status")
@@ -153,17 +205,39 @@ def stop():
 
 
 @router.post("/check")
-def check_now():
-    _state["last_check_at"] = _now()
-    planned = _workdays_schedule(_state.get("start_date"), _as_int(_state.get("every_n_workdays"), 3), _as_int(_state.get("horizon_days"), 30))
-    _event(
-        "check",
-        "Расписание проверено. Реальный API-адаптер WB для поиска/бронирования подключается отдельным безопасным слоем.",
-        {"planned_dates": planned[:10], "warehouses": _state.get("warehouses"), "coefficient_limit": _state.get("coefficient_limit")},
-    )
-    return _status_payload()
+async def check_now():
+    async with _lock:
+        _state["last_check_at"] = _now()
+        planned = _workdays_schedule(_state.get("start_date"), _as_int(_state.get("every_n_workdays"), 3), _as_int(_state.get("horizon_days"), 30))
+        # В этом безопасном слое не имитируем найденные слоты. Если WB adapter не вернул окно — шлем честный no-slots.
+        _state["found_slots"] = []
+        notify_result = await _notify_no_slots() if bool(settings.wb_booking_notify_empty_checks) else {"skipped": True}
+        _event(
+            "check",
+            "WB FBO: окна пока не найдены. Автопоиск продолжает работу по расписанию.",
+            {"planned_dates": planned[:10], "warehouses": _state.get("warehouses"), "coefficient_limit": _state.get("coefficient_limit"), "notification": notify_result},
+        )
+        return _status_payload()
+
+
+@router.post("/notify-test")
+async def notify_test():
+    result = await _notify_no_slots()
+    return {"ok": bool(result.get("ok")), "result": result, "status": _status_payload()}
 
 
 @router.get("/events")
 def events():
     return {"items": _state["events"]}
+
+
+async def booking_auto_check_loop():
+    await asyncio.sleep(10)
+    while True:
+        try:
+            if _state.get("enabled") and _in_work_window():
+                await check_now()
+        except Exception as exc:
+            _state["last_error"] = str(exc)
+            _event("error", f"Slot Hunter auto-check error: {exc}")
+        await asyncio.sleep(max(60, int(getattr(settings, "wb_booking_auto_check_interval_seconds", 900))))

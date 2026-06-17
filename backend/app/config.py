@@ -31,18 +31,25 @@ class Settings(BaseSettings):
     ozon_auto_sync_enabled: bool = False
     ozon_auto_sync_interval_seconds: int = 900
     ozon_auto_sync_initial_delay_seconds: int = 40
+    ozon_sync_pages_per_block_run: int = 5
+
+    # Slot Hunter notifications
+    telegram_bot_token: str = Field(default="", validation_alias=AliasChoices("TELEGRAM_BOT_TOKEN", "TG_BOT_TOKEN", "telegram_bot_token"))
+    telegram_chat_id: str = Field(default="", validation_alias=AliasChoices("TELEGRAM_CHAT_ID", "TG_CHAT_ID", "telegram_chat_id"))
+    wb_booking_auto_check_interval_seconds: int = 900
+    wb_booking_notify_empty_checks: bool = True
 
     wb_sync_mode: str = "both"
     wb_sync_unanswered_only: bool | None = None
     wb_sync_take: int = 100
-    wb_sync_max_pages: int = 50
-    wb_sync_pages_per_block_run: int = 2
+    wb_sync_max_pages: int = 20
+    wb_sync_pages_per_block_run: int = 1
 
     wb_retry_attempts: int = 1
     wb_retry_base_delay_seconds: float = 15
-    wb_request_pause_seconds: float = 3
-    wb_global_min_request_interval_seconds: float = 3
-    wb_global_429_circuit_breaker_seconds: int = 300
+    wb_request_pause_seconds: float = 12
+    wb_global_min_request_interval_seconds: float = 12
+    wb_global_429_circuit_breaker_seconds: int = 3600
     wb_request_timeout_seconds: float = 20
     wb_sync_max_runtime_seconds: int = 900
 
@@ -56,7 +63,7 @@ class Settings(BaseSettings):
     wb_backfill_sync_enabled: bool = True
     wb_backfill_sync_interval_seconds: int = 1800
     wb_backfill_initial_delay_seconds: int = 180
-    wb_rate_limit_cooldown_seconds: int = 300
+    wb_rate_limit_cooldown_seconds: int = 1800
 
     enable_marketplace_publishing: bool = False
     wb_diagnostic_counts_enabled: bool = False

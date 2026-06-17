@@ -18,7 +18,9 @@ _ozon_status: dict[str, Any] = {
     'last_error': None,
     'last_result': None,
     'blocks': {},
+    'cursors': {},
 }
+
 
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -33,9 +35,13 @@ def _client() -> OzonClient:
     )
 
 
+def _is_ozon_no_text_review(data: dict[str, Any]) -> bool:
+    return data.get('platform') == 'OZON' and data.get('operational_status') == 'no_text_rating'
+
+
 def _upsert_review(db: Session, data: dict[str, Any]) -> str:
     existing = db.query(Review).filter(Review.platform == data['platform'], Review.external_id == data['external_id']).first()
-    if settings.ai_auto_classify_on_sync:
+    if settings.ai_auto_classify_on_sync and not _is_ozon_no_text_review(data):
         local = classify_review(data.get('text'), data.get('rating'), data.get('pros'), data.get('cons'))
         data.setdefault('ai_category', local.get('category'))
         data.setdefault('ai_sentiment', local.get('sentiment'))
@@ -48,12 +54,21 @@ def _upsert_review(db: Session, data: dict[str, Any]) -> str:
         return 'created'
     preserved_response_origin = existing.response_origin if existing.response_origin in {'auto_app', 'manual_app'} else None
     for key in ['sku','product_name','rating','text','pros','cons','client_name','created_at_marketplace','has_answer','raw','source_status','operational_status','last_seen_source','last_seen_at','publish_blocked_reason','response_origin','ai_tags']:
-        setattr(existing, key, data.get(key))
-    if preserved_response_origin:
+        if key in data:
+            setattr(existing, key, data.get(key))
+    if preserved_response_origin and not _is_ozon_no_text_review(data):
         existing.response_origin = preserved_response_origin
     if data.get('final_answer'):
         existing.final_answer = data.get('final_answer')
-    if settings.ai_auto_classify_on_sync and not existing.ai_category:
+    if _is_ozon_no_text_review(data):
+        existing.ai_category = data.get('ai_category')
+        existing.ai_sentiment = data.get('ai_sentiment')
+        existing.ai_risk_level = data.get('ai_risk_level')
+        existing.ai_reason = data.get('ai_reason')
+        existing.status = 'no_text_rating'
+        existing.draft_answer = None
+        existing.final_answer = data.get('final_answer')
+    elif settings.ai_auto_classify_on_sync and not existing.ai_category:
         existing.ai_category = data.get('ai_category')
         existing.ai_sentiment = data.get('ai_sentiment')
         existing.ai_risk_level = data.get('ai_risk_level')
@@ -89,6 +104,44 @@ def _upsert_question(db: Session, data: dict[str, Any]) -> str:
     return 'updated'
 
 
+async def _sync_ozon_reviews_paginated(db: Session, block: str, *, answered: bool) -> dict[str, Any]:
+    oz = _client()
+    limit = max(1, int(settings.ozon_sync_take))
+    pages = max(1, int(getattr(settings, 'ozon_sync_pages_per_block_run', 5)))
+    cursor_key = f'{block}:last_id'
+    last_id = _ozon_status.setdefault('cursors', {}).get(cursor_key)
+    result = {'platform': 'OZON', 'block': block, 'created': 0, 'updated': 0, 'received': 0, 'no_text_reviews': 0, 'pages': 0, 'diagnostics': {'pages': []}}
+    for _ in range(pages):
+        if answered:
+            items, diag = await oz.get_reviews_answered_page(limit, last_id)
+            source_status = 'ozon_answered'
+            operational_status = 'analytics_only'
+            has_answer = True
+        else:
+            items, diag = await oz.get_reviews_unanswered_page(limit, last_id)
+            source_status = 'ozon_unanswered'
+            operational_status = 'needs_response'
+            has_answer = False
+        result['pages'] += 1
+        result['received'] += len(items)
+        result['diagnostics']['pages'].append(diag)
+        for item in items:
+            data = normalize_ozon_review(item, source_status=source_status, operational_status=operational_status, has_answer=has_answer)
+            if data.get('operational_status') == 'no_text_rating':
+                result['no_text_reviews'] += 1
+            r = _upsert_review(db, data)
+            result['created' if r == 'created' else 'updated'] += 1
+        last_id = diag.get('last_id')
+        if last_id:
+            _ozon_status['cursors'][cursor_key] = last_id
+        if not diag.get('has_next') or not items:
+            # Начинаем следующий цикл сначала, чтобы снова поймать свежие записи.
+            _ozon_status['cursors'].pop(cursor_key, None)
+            break
+    result['message'] = f'Ozon блок {block}: получено {result["received"]}, новых {result["created"]}, обновлено {result["updated"]}, без текста {result["no_text_reviews"]}'
+    return result
+
+
 async def sync_ozon_block(db: Session, block: str) -> dict[str, Any]:
     if not settings.ozon_sync_enabled:
         raise RuntimeError('OZON_SYNC_ENABLED=false. Включи Ozon в .env и перезапусти приложение.')
@@ -96,21 +149,9 @@ async def sync_ozon_block(db: Session, block: str) -> dict[str, Any]:
     limit = max(1, int(settings.ozon_sync_take))
     result = {'platform': 'OZON', 'block': block, 'created': 0, 'updated': 0, 'received': 0, 'diagnostics': {}}
     if block == 'reviews_unanswered':
-        items, diag = await oz.get_reviews_unanswered(limit)
-        result['diagnostics'] = diag
-        result['received'] = len(items)
-        for item in items:
-            data = normalize_ozon_review(item, source_status='ozon_unanswered', operational_status='needs_response', has_answer=False)
-            r = _upsert_review(db, data)
-            result['created' if r == 'created' else 'updated'] += 1
+        return await _sync_ozon_reviews_paginated(db, block, answered=False)
     elif block == 'reviews_answered':
-        items, diag = await oz.get_reviews_answered(limit)
-        result['diagnostics'] = diag
-        result['received'] = len(items)
-        for item in items:
-            data = normalize_ozon_review(item, source_status='ozon_answered', operational_status='analytics_only', has_answer=True)
-            r = _upsert_review(db, data)
-            result['created' if r == 'created' else 'updated'] += 1
+        return await _sync_ozon_reviews_paginated(db, block, answered=True)
     elif block == 'questions_unanswered':
         items, diag = await oz.get_questions_unanswered(limit)
         result['diagnostics'] = diag
@@ -136,12 +177,12 @@ async def sync_ozon_block(db: Session, block: str) -> dict[str, Any]:
 async def sync_ozon_all(db: Session) -> dict[str, Any]:
     _ozon_status['last_started_at'] = _now_iso()
     _ozon_status['last_error'] = None
-    blocks = ['reviews_unanswered','questions_unanswered','reviews_answered','questions_answered']
+    blocks = ['reviews_unanswered','reviews_answered','questions_unanswered','questions_answered']
     results = []
     for block in blocks:
         try:
             res = await sync_ozon_block(db, block)
-            _ozon_status['blocks'][block] = {'status': 'success', 'last_result': res, 'last_success_at': _now_iso()}
+            _ozon_status['blocks'][block] = {'status': 'success', 'last_result': res, 'last_success_at': _now_iso(), 'last_finished_at': _now_iso()}
             results.append(res)
         except Exception as exc:
             err = str(exc)
@@ -158,13 +199,13 @@ def get_ozon_status() -> dict[str, Any]:
     _ozon_status['has_client_id'] = bool(settings.ozon_client_id)
     _ozon_status['has_api_key'] = bool(settings.ozon_api_key)
     _ozon_status['sync_take'] = settings.ozon_sync_take
+    _ozon_status['pages_per_block_run'] = getattr(settings, 'ozon_sync_pages_per_block_run', 5)
     return dict(_ozon_status)
 
 
-# v3.1: optional Ozon automatic drip sync. It runs one block per interval so Ozon and WB are visually/operationally separate.
 import asyncio
 
-OZON_SYNC_BLOCKS = ['reviews_unanswered', 'questions_unanswered', 'reviews_answered', 'questions_answered']
+OZON_SYNC_BLOCKS = ['reviews_unanswered', 'reviews_answered', 'questions_unanswered', 'questions_answered']
 _ozon_auto_index = 0
 _ozon_lock = asyncio.Lock()
 

@@ -103,16 +103,6 @@ class Review(Base):
     def product_url(self) -> str | None:
         return wb_product_url_from_raw(self.raw, self.sku) if self.platform == 'WB' else (ozon_product_url(self.raw, self.sku, self.product_name) if self.platform == 'OZON' else None)
 
-    @property
-    def no_text_rating(self) -> bool:
-        if (self.platform or '').upper() != 'OZON':
-            return False
-        return not any((self.text or '').strip() or (self.pros or '').strip() or (self.cons or '').strip())
-
-    @property
-    def response_allowed(self) -> bool:
-        return not self.no_text_rating
-
 class Question(Base):
     __tablename__ = 'questions'
     __table_args__ = (UniqueConstraint('platform', 'external_id', name='uq_question_platform_external'),)
@@ -174,4 +164,27 @@ class AutomationRules(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), default='default', unique=True, index=True)
     rules: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class MarketplaceOperation(Base):
+    __tablename__ = 'marketplace_operations'
+    __table_args__ = (UniqueConstraint('platform', 'operation_type', 'external_id', name='uq_operation_platform_type_external'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+    operation_type: Mapped[str] = mapped_column(String(64), index=True)  # return, act, shortage, surplus, anonymization, discrepancy
+    external_id: Mapped[str] = mapped_column(String(128), index=True)
+    document_number: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    sku: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    product_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    warehouse: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    amount: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(64), default='new', index=True)
+    responsible: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

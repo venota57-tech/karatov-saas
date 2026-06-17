@@ -114,6 +114,27 @@ def run_lightweight_migrations():
         "created_at": dt_type,
     }
 
+
+    operation_columns = {
+        "platform": "VARCHAR(32)",
+        "operation_type": "VARCHAR(64)",
+        "external_id": "VARCHAR(128)",
+        "document_number": "VARCHAR(128)",
+        "sku": "VARCHAR(128)",
+        "product_name": "TEXT",
+        "warehouse": "TEXT",
+        "amount": "VARCHAR(64)",
+        "quantity": int_type,
+        "reason": "TEXT",
+        "status": "VARCHAR(64) DEFAULT 'new'",
+        "responsible": "VARCHAR(128)",
+        "comment": "TEXT",
+        "raw": json_type,
+        "occurred_at": dt_type,
+        "created_at": dt_type,
+        "updated_at": dt_type,
+    }
+
     with engine.begin() as conn:
         for col, col_type in review_columns.items():
             _add_column_if_missing(conn, "reviews", col, col_type)
@@ -123,6 +144,9 @@ def run_lightweight_migrations():
 
         for col, col_type in rating_snapshot_columns.items():
             _add_column_if_missing(conn, "rating_snapshots", col, col_type)
+
+        for col, col_type in operation_columns.items():
+            _add_column_if_missing(conn, "marketplace_operations", col, col_type)
 
         conn.execute(text("UPDATE reviews SET status = 'new' WHERE status IS NULL"))
         conn.execute(text("UPDATE questions SET status = 'new' WHERE status IS NULL"))

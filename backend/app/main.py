@@ -7,7 +7,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, not_
 
 from app.config import settings
 from app.database import get_db, run_lightweight_migrations, SessionLocal
@@ -35,6 +34,12 @@ except Exception as e:
     ozon_auto_sync_loop = None
     sync_ozon_all = None
 
+try:
+    from app.routes.wb_booking import booking_auto_check_loop
+except Exception as e:
+    print(f"[startup] Slot Hunter loop unavailable: {e}")
+    booking_auto_check_loop = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,6 +63,10 @@ async def lifespan(app: FastAPI):
         tasks.append(asyncio.create_task(autopublish_loop()))
         print("[startup] autopublish loop started")
 
+    if booking_auto_check_loop:
+        tasks.append(asyncio.create_task(booking_auto_check_loop()))
+        print("[startup] Slot Hunter auto-check loop started")
+
     yield
 
     for task in tasks:
@@ -66,10 +75,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="KARATOV CX Hub", lifespan=lifespan)
 generator = AnswerGenerator()
-
-def _ozon_no_text_review_condition():
-    empty_text = and_(Review.text.is_(None) | (Review.text == ''), Review.pros.is_(None) | (Review.pros == ''), Review.cons.is_(None) | (Review.cons == ''))
-    return and_(Review.platform == 'OZON', empty_text)
 
 
 def include_router_safe(module_path: str):
@@ -94,6 +99,7 @@ for route in [
     "app.routes.analytics",
     "app.routes.wb_booking",
     "app.routes.ops_history",
+    "app.routes.operations",
 ]:
     include_router_safe(route)
 
@@ -115,9 +121,6 @@ def reviews_compat(
         q = q.filter(Review.platform == platform.upper())
     if answer_state == "unanswered":
         q = q.filter(Review.operational_status == "needs_response")
-        q = q.filter(not_(_ozon_no_text_review_condition()))
-    elif answer_state == "no_text_rating":
-        q = q.filter(_ozon_no_text_review_condition())
     elif answer_state == "answered":
         q = q.filter(Review.has_answer == True)  # noqa: E712
     rows = q.order_by(Review.created_at_marketplace.desc().nullslast(), Review.id.desc()).limit(min(limit, 2000)).all()
@@ -223,7 +226,7 @@ def serve_frontend():
 def serve_frontend_fallback(full_path: str):
     api_prefixes = (
         "api/", "system/", "sync/", "settings/", "reports", "summary", "reviews", "questions",
-        "autopublish", "wb-booking", "ops/", "analytics/",
+        "autopublish", "wb-booking", "ops/", "operations", "analytics/",
     )
     if full_path.startswith(api_prefixes):
         return JSONResponse(status_code=404, content={"error": "Not found"})

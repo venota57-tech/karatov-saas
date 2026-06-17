@@ -147,6 +147,9 @@ function App() {
   const [publishHistory, setPublishHistory] = useState(null);
   const [rules, setRules] = useState({});
   const [booking, setBooking] = useState(null);
+  const [operations, setOperations] = useState([]);
+  const [operationsSummary, setOperationsSummary] = useState(null);
+  const [operationType, setOperationType] = useState("all");
   const [roleRights, setRoleRights] = useState(loadSavedRights);
 
   const rawItems = useMemo(() => [...reviews.map(x => ({ ...x, kind: "review" })), ...questions.map(x => ({ ...x, kind: "question" }))], [reviews, questions]);
@@ -166,7 +169,7 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => { loadProducts(false); }, [platform]);
+  useEffect(() => { loadProducts(false); refreshAll(false); }, [platform, operationType]);
 
   useEffect(() => {
     if (!selected) return;
@@ -230,7 +233,7 @@ function App() {
   async function refreshAll(show = true) {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
-      const [r, q, d, s, p, rulesData, b] = await Promise.allSettled([
+      const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
         api("/reviews?limit=2000"),
         api("/questions?limit=2000"),
         api("/system/diagnostics").catch(() => api("/system/status")),
@@ -238,6 +241,8 @@ function App() {
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
         api("/wb-booking/status").catch(() => null),
+        api(`/operations?platform=${platform}&operation_type=${operationType}&limit=500`).catch(() => ({ items: [] })),
+        api(`/operations/summary?platform=${platform}`).catch(() => null),
       ]);
       if (r.status === "fulfilled") setReviews(asList(r.value));
       if (q.status === "fulfilled") setQuestions(asList(q.value));
@@ -246,6 +251,8 @@ function App() {
       if (p.status === "fulfilled") setPublishHistory(p.value);
       if (rulesData.status === "fulfilled") setRules(rulesData.value || {});
       if (b.status === "fulfilled") setBooking(b.value);
+      if (opsData.status === "fulfilled") setOperations(opsData.value?.items || []);
+      if (opsSummaryData.status === "fulfilled") setOperationsSummary(opsSummaryData.value);
       setLastRefresh(new Date().toISOString());
       if (show) setMessage("Данные обновлены");
     } catch (e) {
@@ -489,17 +496,32 @@ function App() {
   }
 
   function renderOperations() {
-    const blocks = ["Возвраты", "Акты", "Недостачи", "Излишки", "Обезличка", "Расхождения"];
-    return <Section title="Marketplace Operations Hub" subtitle="Операции маркетплейсов в одном пространстве: WB, Ozon, Яндекс Маркет" actions={<button className="primary" disabled>API-подключение следующим пакетом</button>}>
-      <div className="cards wideCards">{blocks.map(name => <Card key={name} title={name} value="0" hint="готово место под API" />)}</div>
-      <div className="panel"><h3>Целевая логика</h3><p className="bigText">Этот раздел объединит возвраты, акты, недостачи, излишки, обезличку и расхождения по всем площадкам. Каждое событие будет связано с товаром, поставкой, отзывами и задачами для команды.</p><div className="moduleGrid">{blocks.map(x => <div className="moduleCard" key={x}><b>{x}</b><span>Реестр, статус, сумма риска, ответственный, задача</span></div>)}</div></div>
+    const labels = {
+      return: "Возвраты",
+      act: "Акты",
+      shortage: "Недостачи",
+      surplus: "Излишки",
+      anonymization: "Обезличка",
+      discrepancy: "Расхождения",
+    };
+    const byType = operationsSummary?.by_type || {};
+    const byStatus = operationsSummary?.by_status || {};
+    const syncMessage = operationsSummary?.api_status?.message;
+    return <Section title="Marketplace Operations Hub" subtitle="Возвраты, акты, недостачи, излишки, обезличка и расхождения" actions={<><button onClick={() => run(`/operations/sync?platform=${platform}`, "Синхронизация операций")}>Синхронизировать операции</button><button className="primary" onClick={() => refreshAll(true)}>Обновить</button></>}>
+      <div className="cards wideCards">
+        <Card title="Всего операций" value={num(operationsSummary?.total || operations.length)} />
+        {Object.entries(labels).map(([key, title]) => <Card key={key} title={title} value={num(byType[key] || 0)} onClick={() => setOperationType(key)} />)}
+      </div>
+      <div className="sectionFilters"><div><label>Тип операции</label><select value={operationType} onChange={e => setOperationType(e.target.value)}><option value="all">Все</option>{Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></div><div className="grow"><label>Статусы</label><div className="tags"><Badge>Новые: {byStatus.new || 0}</Badge><Badge type="yellow">В работе: {byStatus.in_progress || 0}</Badge><Badge type="green">Закрыто: {byStatus.closed || 0}</Badge></div></div></div>
+      {syncMessage && <div className="message soft">{syncMessage}</div>}
+      <div className="panel"><h3>Реестр операций</h3>{operations.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Тип</th><th>Документ</th><th>SKU</th><th>Склад</th><th>Кол-во</th><th>Сумма</th><th>Статус</th><th>Ответственный</th></tr></thead><tbody>{operations.map(x => <tr key={x.id}><td>{dt(x.occurred_at || x.created_at)}</td><td><PlatformBadge value={x.platform}/></td><td>{labels[x.operation_type] || x.operation_type}</td><td>{x.document_number || x.external_id}</td><td>{x.sku || "—"}</td><td>{x.warehouse || "—"}</td><td>{x.quantity ?? "—"}</td><td>{x.amount || "—"}</td><td><Badge type={x.status === "closed" ? "green" : x.status === "in_progress" ? "yellow" : ""}>{x.status}</Badge></td><td>{x.responsible || "—"}</td></tr>)}</tbody></table> : <Empty>Операции пока не загружены. Реестр готов, следующий шаг — подключение конкретных WB/Ozon API-адаптеров без демо-данных.</Empty>}</div>
     </Section>;
   }
 
   function renderFbo() {
     const b = booking || {};
     const update = (key, value) => setBooking(prev => ({ ...(prev || {}), [key]: value }));
-    return <Section title="FBO Control Center" subtitle="Slot Hunter PRO: расписание, коэффициенты, уведомления и история" actions={<><button onClick={() => run("/wb-booking/check", "Проверка Slot Hunter")}>Проверить сейчас</button><button className="primary" onClick={() => saveBookingConfig(b)}>Сохранить</button></>}>
+    return <Section title="FBO Control Center" subtitle="Slot Hunter PRO: расписание, коэффициенты, уведомления и история" actions={<><button onClick={() => run("/wb-booking/check", "Проверка Slot Hunter")}>Проверить сейчас</button><button onClick={() => run("/wb-booking/notify-test", "Тест Telegram")}>Тест Telegram</button><button className="primary" onClick={() => saveBookingConfig(b)}>Сохранить</button></>}>
       <div className="layoutTwo"><div className="panel"><h3>Расписание поиска слотов</h3><label>Склады</label><input value={(b.warehouses || []).join(", ")} onChange={e => update("warehouses", e.target.value.split(",").map(x=>x.trim()).filter(Boolean))}/><label>Тип поставки</label><input value={b.supply_type || "Суперсейф"} onChange={e => update("supply_type", e.target.value)}/><label>Максимальный коэффициент</label><input inputMode="numeric" value={b.coefficient_limit ?? ""} onChange={e => update("coefficient_limit", e.target.value === "" ? "" : Number(e.target.value))}/><label>Стартовая дата</label><input type="date" value={(b.start_date || "").slice(0,10)} onChange={e => update("start_date", e.target.value)}/><label>Каждые N рабочих дней</label><input inputMode="numeric" value={b.every_n_workdays ?? b.interval_workdays ?? ""} onChange={e => update("every_n_workdays", e.target.value === "" ? "" : Number(e.target.value))}/><label>Горизонт поиска, дней</label><input inputMode="numeric" value={b.horizon_days ?? ""} onChange={e => update("horizon_days", e.target.value === "" ? "" : Number(e.target.value))}/></div>
       <div className="panel"><h3>Режим и уведомления</h3><label>Режим</label><select value={b.mode || "monitor_only"} onChange={e => update("mode", e.target.value)}><option value="monitor_only">Только мониторинг</option><option value="notify_only">Найти и уведомить</option><option value="auto_book">Автобронирование после проверки</option></select><label className="check"><input type="checkbox" checked={!!b.telegram_enabled} onChange={e => update("telegram_enabled", e.target.checked)}/> Telegram-уведомления</label><p className="meta">Chat ID не вводим вручную: используем подключенную группу/бота из окружения или ранее сохраненной настройки.</p><label className="check"><input type="checkbox" checked={!!b.email_enabled} onChange={e => update("email_enabled", e.target.checked)}/> Email-уведомления</label><label>Email получатели</label><textarea value={(b.email_recipients || []).join("\n")} onChange={e => update("email_recipients", e.target.value.split("\n").map(x=>x.trim()).filter(Boolean))}/><button onClick={() => run(b.enabled ? "/wb-booking/stop" : "/wb-booking/start", b.enabled ? "Остановить Slot Hunter" : "Включить Slot Hunter")}>{b.enabled ? "Остановить" : "Включить"}</button></div></div>
       <div className="layoutTwo"><div className="panel"><h3>Плановые даты</h3><div className="dateGrid">{(b.planned_dates || b.target_dates || []).slice(0,30).map(x => <span key={x}>{x}</span>)}</div></div><div className="panel"><h3>История Slot Hunter</h3>{(b.events || b.history || []).slice(0,20).map((e,i)=><div className="eventRow" key={i}><b>{e.kind || e.event}</b><span>{e.message || e.status || "событие"}</span><em>{dt(e.at)}</em></div>)}</div></div>
