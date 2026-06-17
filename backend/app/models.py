@@ -103,6 +103,16 @@ class Review(Base):
     def product_url(self) -> str | None:
         return wb_product_url_from_raw(self.raw, self.sku) if self.platform == 'WB' else (ozon_product_url(self.raw, self.sku, self.product_name) if self.platform == 'OZON' else None)
 
+    @property
+    def no_text_rating(self) -> bool:
+        if (self.platform or '').upper() != 'OZON':
+            return False
+        return not any((self.text or '').strip() or (self.pros or '').strip() or (self.cons or '').strip())
+
+    @property
+    def response_allowed(self) -> bool:
+        return not self.no_text_rating
+
 class Question(Base):
     __tablename__ = 'questions'
     __table_args__ = (UniqueConstraint('platform', 'external_id', name='uq_question_platform_external'),)

@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
+from sqlalchemy import and_, not_
 
 from app.config import settings
 from app.database import get_db, run_lightweight_migrations, SessionLocal
@@ -66,6 +67,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="KARATOV CX Hub", lifespan=lifespan)
 generator = AnswerGenerator()
 
+def _ozon_no_text_review_condition():
+    empty_text = and_(Review.text.is_(None) | (Review.text == ''), Review.pros.is_(None) | (Review.pros == ''), Review.cons.is_(None) | (Review.cons == ''))
+    return and_(Review.platform == 'OZON', empty_text)
+
 
 def include_router_safe(module_path: str):
     try:
@@ -110,6 +115,9 @@ def reviews_compat(
         q = q.filter(Review.platform == platform.upper())
     if answer_state == "unanswered":
         q = q.filter(Review.operational_status == "needs_response")
+        q = q.filter(not_(_ozon_no_text_review_condition()))
+    elif answer_state == "no_text_rating":
+        q = q.filter(_ozon_no_text_review_condition())
     elif answer_state == "answered":
         q = q.filter(Review.has_answer == True)  # noqa: E712
     rows = q.order_by(Review.created_at_marketplace.desc().nullslast(), Review.id.desc()).limit(min(limit, 2000)).all()

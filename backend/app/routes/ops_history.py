@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Review, Question
+from app.models import Review, Question, RatingSnapshot
 from app.config import settings
 
 router = APIRouter(prefix="/ops", tags=["ops"])
@@ -106,6 +106,10 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
 
     reviews = q1.all()
     questions = q2.all()
+    snap_q = db.query(RatingSnapshot)
+    if platform and platform.upper() != "ALL":
+        snap_q = snap_q.filter(RatingSnapshot.platform == platform.upper())
+    snapshots = snap_q.order_by(RatingSnapshot.created_at.desc()).limit(5000).all()
     grouped: dict[str, dict[str, Any]] = defaultdict(lambda: {
         "sku": None,
         "product_name": None,
@@ -120,7 +124,26 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
         "latest_at": None,
         "product_url": None,
         "samples": [],
+        "rating_snapshots": 0,
+        "latest_rating": None,
+        "feedbacks_count": None,
     })
+
+    def add_snapshot(x):
+        key = x.sku or x.product_name or "unknown"
+        g = grouped[key]
+        g["sku"] = x.sku or g["sku"]
+        g["product_name"] = x.product_name or g["product_name"]
+        g["platforms"].add(x.platform or "UNKNOWN")
+        g["rating_snapshots"] += 1
+        g["latest_rating"] = x.rating or g["latest_rating"]
+        g["feedbacks_count"] = x.feedbacks_count if x.feedbacks_count is not None else g["feedbacks_count"]
+        dtv = x.created_at
+        if dtv and (g["latest_at"] is None or dtv > g["latest_at"]):
+            g["latest_at"] = dtv
+        url = _item_url(x.platform, x.sku, getattr(x, "product_url", None))
+        if url:
+            g["product_url"] = url
 
     def add(x, kind):
         key = _product_key(x)
@@ -153,6 +176,8 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
         add(r, "review")
     for q in questions:
         add(q, "question")
+    for sn in snapshots:
+        add_snapshot(sn)
 
     rows = []
     for key, g in grouped.items():
@@ -169,6 +194,9 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
             "reviews": g["reviews"],
             "questions": g["questions"],
             "avg_rating": avg_rating,
+            "latest_rating": g.get("latest_rating"),
+            "feedbacks_count": g.get("feedbacks_count"),
+            "rating_snapshots": g.get("rating_snapshots", 0),
             "negative": g["negative"],
             "high_risk": g["high_risk"],
             "risk_score": round(risk_score, 2),
@@ -185,9 +213,10 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
 
 def _build_product_summary_text(g, avg_rating, cats):
     main_cat = cats[0][0] if cats else "нет выраженной темы"
+    rating_text = avg_rating if avg_rating is not None else (g.get("latest_rating") or "нет данных")
     return (
         f"По товару собрано {g['reviews']} отзывов и {g['questions']} вопросов. "
-        f"Средний рейтинг: {avg_rating if avg_rating is not None else 'нет данных'}. "
+        f"Рейтинг: {rating_text}. Отзывов на карточке: {g.get('feedbacks_count') or 'нет данных'}. "
         f"Основная тема: {main_cat}. Высоких рисков: {g['high_risk']}."
     )
 
@@ -224,6 +253,26 @@ def product_card(sku: str, platform: str | None = None, db: Session = Depends(ge
             "high_risk": sum(1 for x in all_rows if x.ai_risk_level == "high"),
             "categories": dict(Counter(x.ai_category or "Без категории" for x in all_rows).most_common(10)),
         },
+    }
+
+
+@router.get("/operations-summary")
+def operations_summary(platform: str | None = None):
+    # API для актов/возвратов подключается следующим пакетом.
+    # Эндпоинт уже стабилен для UI и возвращает безопасную структуру.
+    return {
+        "platform": (platform or "ALL").upper(),
+        "items": [],
+        "counts": {
+            "returns": 0,
+            "acts": 0,
+            "shortages": 0,
+            "surplus": 0,
+            "depersonalized": 0,
+            "discrepancies": 0,
+        },
+        "statuses": {"new": 0, "in_progress": 0, "waiting_marketplace": 0, "closed": 0},
+        "message": "Operations Hub готов к подключению API возвратов, актов, недостач, излишков, обезлички и расхождений.",
     }
 
 

@@ -32,6 +32,8 @@ def _matrix_enabled(rules: dict, platform: str, kind: str) -> bool:
 
 
 def _can_publish_review(review: Review, rules: dict) -> tuple[bool, str]:
+    if getattr(review, "no_text_rating", False):
+        return False, "Ozon оценка без текста: ответ невозможен, не участвует в автопубликации"
     if not settings.enable_marketplace_publishing:
         return False, "ENABLE_MARKETPLACE_PUBLISHING=false: режим безопасной синхронизации без публикации"
     if not bool(rules.get("real_autopublish_enabled", False)):

@@ -32,6 +32,8 @@ class ReviewOut(BaseModel):
     last_seen_source: str | None = None
     publish_blocked_reason: str | None = None
     response_origin: str | None = None
+    no_text_rating: bool | None = None
+    response_allowed: bool | None = None
     source_status: str | None = None
     operational_status: str | None = None
     last_seen_source: str | None = None

@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, and_, not_
 
 from ..database import get_db
 from ..models import Review
@@ -13,6 +13,14 @@ from ..services.automation_rules import apply_publication_rules, get_rules
 from ..services.publishing_service import publish_review, publish_reviews_bulk, edit_published_review_answer
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
+
+
+def _ozon_no_text_condition():
+    empty_text = and_(Review.text.is_(None) | (Review.text == ''), Review.pros.is_(None) | (Review.pros == ''), Review.cons.is_(None) | (Review.cons == ''))
+    return and_(Review.platform == 'OZON', empty_text)
+
+def _is_ozon_no_text(review: Review) -> bool:
+    return bool(getattr(review, 'no_text_rating', False))
 
 
 @router.get("", response_model=list[ReviewOut])
@@ -48,6 +56,9 @@ def list_reviews(
         q = q.filter(Review.source_status.in_(["wb_answered", "wb_archive", "ozon_answered"]))
     elif answer_state == "unanswered":
         q = q.filter(Review.operational_status == "needs_response", Review.source_status.in_(["wb_unanswered", "ozon_unanswered"]))
+        q = q.filter(not_(_ozon_no_text_condition()))
+    elif answer_state == "no_text_rating":
+        q = q.filter(_ozon_no_text_condition())
     elif answer_state == "stale":
         q = q.filter(Review.operational_status == "stale_unanswered")
     elif answer_state == "manual":
@@ -62,6 +73,14 @@ def generate_review_answer(review_id: int, db: Session = Depends(get_db)):
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(404, "Отзыв не найден")
+    if _is_ozon_no_text(review):
+        review.status = "no_text_rating"
+        review.operational_status = "analytics_only"
+        review.ai_can_autopublish = False
+        review.publish_blocked_reason = "Ozon не позволяет отвечать на оценки без текста. AI и шаблоны не используются."
+        db.commit()
+        db.refresh(review)
+        raise HTTPException(400, "Ozon не позволяет отвечать на оценки без текста. Отзыв перенесен в аналитику без SLA.")
     rules = get_rules(db).rules or {}
     result = AnswerGenerator(rules).generate_for_review_until_pass({
         "platform": review.platform,
@@ -99,6 +118,8 @@ def update_review_answer(review_id: int, payload: AnswerUpdate, db: Session = De
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(404, "Отзыв не найден")
+    if _is_ozon_no_text(review):
+        raise HTTPException(400, "На Ozon нельзя отвечать на оценку без текста")
     review.final_answer = payload.final_answer
     review.draft_answer = payload.final_answer
     review.status = "ready_to_publish" if review.operational_status == "needs_response" else "local_edited"
@@ -109,6 +130,9 @@ def update_review_answer(review_id: int, payload: AnswerUpdate, db: Session = De
 
 @router.post("/{review_id}/publish")
 async def publish(review_id: int, db: Session = Depends(get_db)):
+    review = db.get(Review, review_id)
+    if review and _is_ozon_no_text(review):
+        raise HTTPException(400, "На Ozon нельзя публиковать ответ на оценку без текста")
     try:
         return await publish_review(db, review_id)
     except Exception as exc:  # noqa: BLE001

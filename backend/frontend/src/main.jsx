@@ -12,7 +12,8 @@ const PLATFORMS = [
 const NAV = [
   { id: "tower", title: "Control Tower", group: "Главное" },
   { id: "communications", title: "Коммуникации", group: "Работа" },
-  { id: "quality", title: "Каталог и качество", group: "Работа" },
+  { id: "catalog", title: "Каталог товаров", group: "Работа" },
+  { id: "quality", title: "Quality Hub", group: "Работа" },
   { id: "operations", title: "Операции", group: "Работа" },
   { id: "fbo", title: "FBO Center", group: "Работа" },
   { id: "analytics", title: "Аналитика", group: "Управление" },
@@ -25,16 +26,37 @@ const ANSWER_STATES = [
   ["unanswered", "Требуют ответа"],
   ["drafts", "Черновики готовы"],
   ["answered", "С ответом"],
+  ["no_text", "Оценки без комментария"],
   ["risk", "Высокий риск"],
 ];
 
 const MODULES = [
   { title: "Communications", desc: "Отзывы, вопросы, AI-ответы, автопубликация" },
-  { title: "Quality Hub", desc: "Карточки товаров, жалобы, аномалии, рекомендации" },
+  { title: "Product Catalog", desc: "Товары, рейтинги, ссылки на WB/Ozon/ЯМ" },
+  { title: "Quality Hub", desc: "Жалобы, аномалии, AI-рекомендации" },
   { title: "Marketplace Operations", desc: "Возвраты, акты, недостачи, излишки, обезличка" },
   { title: "FBO Control", desc: "Slot Hunter, календарь, уведомления, история" },
   { title: "Security", desc: "Роли, права, аудит действий" },
 ];
+
+const ACCESS_MODULES = [
+  ["tower", "Control Tower"],
+  ["communications", "Коммуникации"],
+  ["catalog", "Каталог товаров"],
+  ["quality", "Quality Hub"],
+  ["operations", "Operations Hub"],
+  ["fbo", "FBO Center"],
+  ["analytics", "Аналитика"],
+  ["settings", "Настройки"],
+  ["security", "Пользователи и роли"],
+];
+
+const DEFAULT_ROLE_RIGHTS = {
+  "Оператор": { communications: { view: true, edit: true, publish: false }, catalog: { view: true }, quality: { view: true } },
+  "Старший оператор": { communications: { view: true, edit: true, publish: true }, catalog: { view: true }, quality: { view: true }, analytics: { view: true } },
+  "Руководитель": { tower: { view: true }, communications: { view: true }, catalog: { view: true }, quality: { view: true, edit: true }, operations: { view: true, edit: true }, fbo: { view: true, edit: true }, analytics: { view: true } },
+  "Администратор": Object.fromEntries(ACCESS_MODULES.map(([id]) => [id, { view: true, edit: true, publish: true, admin: true }]))
+};
 
 async function api(path, options = {}) {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
@@ -75,6 +97,27 @@ function groupCount(items, fn) {
   return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
 }
 
+function hasText(item) {
+  return Boolean(String(item?.text || item?.pros || item?.cons || "").trim());
+}
+
+function isNoTextRating(item) {
+  return (item?.platform || "").toUpperCase() === "OZON" && item?.kind === "review" && !hasText(item);
+}
+
+function canRespond(item) {
+  return !isNoTextRating(item);
+}
+
+function needsResponse(item) {
+  return canRespond(item) && (item?.operational_status === "needs_response" || item?.has_answer === false);
+}
+
+function loadSavedRights() {
+  try { return JSON.parse(localStorage.getItem("karatov_role_rights") || "null") || DEFAULT_ROLE_RIGHTS; }
+  catch { return DEFAULT_ROLE_RIGHTS; }
+}
+
 function Badge({ children, type = "" }) { return <span className={`badge ${type}`}>{children}</span>; }
 function PlatformBadge({ value }) { return <span className={`platformBadge ${value || ""}`}>{value || "—"}</span>; }
 function Card({ title, value, hint, onClick, type = "" }) { return <button className={`metricCard ${type}`} onClick={onClick}><b>{value}</b><span>{title}</span>{hint && <small>{hint}</small>}</button>; }
@@ -103,6 +146,7 @@ function App() {
   const [publishHistory, setPublishHistory] = useState(null);
   const [rules, setRules] = useState({});
   const [booking, setBooking] = useState(null);
+  const [roleRights, setRoleRights] = useState(loadSavedRights);
 
   const rawItems = useMemo(() => [...reviews.map(x => ({ ...x, kind: "review" })), ...questions.map(x => ({ ...x, kind: "question" }))], [reviews, questions]);
   const platformItems = useMemo(() => platform === "ALL" ? rawItems : rawItems.filter(x => x.platform === platform), [rawItems, platform]);
@@ -124,9 +168,10 @@ function App() {
   useEffect(() => { loadProducts(false); }, [platform]);
 
   function matchesFilters(item) {
-    if (state === "unanswered" && !(item.operational_status === "needs_response" || item.has_answer === false)) return false;
-    if (state === "drafts" && !(item.final_answer || item.draft_answer || item.status === "ready_to_review" || item.status === "ready_to_publish")) return false;
+    if (state === "unanswered" && !needsResponse(item)) return false;
+    if (state === "drafts" && !(canRespond(item) && (item.final_answer || item.draft_answer || item.status === "ready_to_review" || item.status === "ready_to_publish"))) return false;
     if (state === "answered" && !(item.has_answer || item.response_origin || String(item.status || "").includes("published"))) return false;
+    if (state === "no_text" && !isNoTextRating(item)) return false;
     if (state === "risk" && item.ai_risk_level !== "high") return false;
     const q = search.trim().toLowerCase();
     if (q) {
@@ -137,8 +182,9 @@ function App() {
   }
 
   function buildMetrics(items) {
-    const needs = items.filter(x => x.operational_status === "needs_response" || x.has_answer === false);
-    const drafts = items.filter(x => x.final_answer || x.draft_answer || x.status === "ready_to_review" || x.status === "ready_to_publish");
+    const noTextRatings = items.filter(isNoTextRating);
+    const needs = items.filter(needsResponse);
+    const drafts = items.filter(x => canRespond(x) && (x.final_answer || x.draft_answer || x.status === "ready_to_review" || x.status === "ready_to_publish"));
     const risks = items.filter(x => x.ai_risk_level === "high");
     const reviewsOnly = items.filter(x => x.kind === "review" || x.rating !== undefined);
     return {
@@ -147,6 +193,7 @@ function App() {
       questions: items.length - reviewsOnly.length,
       needs: needs.length,
       drafts: drafts.length,
+      noTextRatings: noTextRatings.length,
       risks: risks.length,
       avgRating: avg(reviewsOnly.map(x => x.rating)),
       wb: rawItems.filter(x => x.platform === "WB").length,
@@ -160,7 +207,7 @@ function App() {
     const riskyProducts = productRows.filter(x => Number(x.high_risk || 0) > 0 || Number(x.negative || 0) > 0).slice(0, 5);
     const highRiskCount = items.filter(x => x.ai_risk_level === "high").length;
     const mainCat = categories[0]?.[0] || "нет выраженной темы";
-    const summary = `По выбранному контуру собрано ${items.length} коммуникаций. Требуют ответа: ${items.filter(x => x.operational_status === "needs_response" || x.has_answer === false).length}. Основная тема: ${mainCat}. Высоких рисков: ${highRiskCount}.`;
+    const summary = `По выбранному контуру собрано ${items.length} коммуникаций. Требуют ответа: ${items.filter(needsResponse).length}. Основная тема: ${mainCat}. Высоких рисков: ${highRiskCount}.`;
     const recs = [];
     if (highRiskCount) recs.push("Разобрать высокорисковые отзывы и передать повторяющиеся темы в качество.");
     if (riskyProducts.length) recs.push(`Проверить товары: ${riskyProducts.map(x => x.sku || x.key).filter(Boolean).slice(0,3).join(", ")}.`);
@@ -311,7 +358,8 @@ function App() {
 
   function navCount(id) {
     if (id === "communications") return <span className="navCount">{metrics.needs}</span>;
-    if (id === "quality") return <span className="navCount">{products.length}</span>;
+    if (id === "catalog") return <span className="navCount">{products.length}</span>;
+    if (id === "quality") return <span className="navCount">{products.filter(x => x.high_risk || x.negative).length}</span>;
     if (id === "fbo" && booking?.enabled) return <span className="navCount greenDot">●</span>;
     return null;
   }
@@ -323,8 +371,9 @@ function App() {
         <Card title="Вопросы" value={num(metrics.questions)} hint="очередь операторов" onClick={() => { setPage("communications"); setKind("questions"); }} />
         <Card title="Требуют ответа" value={num(metrics.needs)} type={metrics.needs ? "warn" : ""} onClick={() => { setPage("communications"); setState("unanswered"); }} />
         <Card title="Черновики AI" value={num(metrics.drafts)} onClick={() => { setPage("communications"); setState("drafts"); }} />
+        <Card title="Оценки без текста" value={num(metrics.noTextRatings)} hint="Ozon: без SLA и AI" onClick={() => { setPage("communications"); setKind("reviews"); setState("no_text"); }} />
         <Card title="Высокий риск" value={num(metrics.risks)} type={metrics.risks ? "danger" : ""} onClick={() => { setPage("quality"); }} />
-        <Card title="Средний рейтинг" value={metrics.avgRating} hint="по отзывам" />
+        <Card title="Средний рейтинг" value={metrics.avgRating} />
       </div>
       <div className="layoutTwo">
         <div className="panel">
@@ -338,7 +387,12 @@ function App() {
           {buildEventFeed().slice(0, 10).map((e, i) => <div className="eventRow" key={i}><b>{e.title}</b><span>{e.text}</span><em>{dt(e.at)}</em></div>)}
         </div>
       </div>
-      <div className="moduleGrid">{MODULES.map(m => <div className="moduleCard" key={m.title}><b>{m.title}</b><span>{m.desc}</span></div>)}</div>
+      <div className="panel attentionPanel">
+        <h3>Требует внимания</h3>
+        {buildAttentionItems().map((x, i) => <div className={`attentionItem ${x.type || ""}`} key={i} onClick={x.onClick}>
+          <b>{x.title}</b><span>{x.text}</span>
+        </div>)}
+      </div>
     </Section>;
   }
 
@@ -347,6 +401,17 @@ function App() {
     platformItems.slice(0, 8).forEach(x => events.push({ at: x.created_at || x.updated_at, title: x.kind === "review" ? "Новый отзыв" : "Новый вопрос", text: `${x.platform} · ${x.sku || x.product_name || "товар"}` }));
     (booking?.events || booking?.history || []).slice(0, 5).forEach(x => events.push({ at: x.at, title: "Slot Hunter", text: x.message || x.event || x.kind || "событие" }));
     return events.sort((a,b)=>new Date(b.at || 0)-new Date(a.at || 0));
+  }
+
+  function buildAttentionItems() {
+    const items = [];
+    if (metrics.needs) items.push({ type: "danger", title: `${metrics.needs} коммуникаций требуют ответа`, text: "Открыть очередь операторов", onClick: () => { setPage("communications"); setState("unanswered"); } });
+    if (metrics.risks) items.push({ type: "danger", title: `${metrics.risks} high-risk отзывов`, text: "Нужна ручная проверка и передача в Quality Hub", onClick: () => { setPage("quality"); } });
+    if (metrics.noTextRatings) items.push({ type: "info", title: `${metrics.noTextRatings} Ozon оценок без текста`, text: "Не требуют ответа, не участвуют в SLA и не тратят AI", onClick: () => { setPage("communications"); setKind("reviews"); setState("no_text"); } });
+    const risky = products.filter(x => x.high_risk || x.negative).length;
+    if (risky) items.push({ type: "warn", title: `${risky} товаров требуют внимания`, text: "Проверить жалобы, рейтинг и AI-рекомендации", onClick: () => { setPage("quality"); } });
+    if (!items.length) items.push({ type: "ok", title: "Критических событий нет", text: "Продолжаем мониторинг SLA, рейтинга, отзывов и слотов" });
+    return items;
   }
 
   function renderCommunications() {
@@ -362,8 +427,8 @@ function App() {
     return <div className={`row ${selected?.id === item.id && selected?.kind === item.kind ? "selected" : ""}`} key={`${item.kind}-${item.id}`} onClick={() => chooseItem(item)}>
       <div className="rowhead"><b>{item.product_name || item.sku || `Запись ${item.id}`}</b><PlatformBadge value={item.platform}/></div>
       <div className="dateMeta">{item.rating && <span>⭐ {item.rating}</span>}<span>{dt(item.created_at_marketplace)}</span><span>{item.source_status}</span></div>
-      <div className="text">{item.text || item.pros || item.cons || "Без текста"}</div>
-      <div className="tags"><Badge>{item.status || "new"}</Badge>{item.ai_category && <Badge type="yellow">{item.ai_category}</Badge>}{item.ai_risk_level && <Badge type={item.ai_risk_level === "high" ? "red" : ""}>{item.ai_risk_level}</Badge>}{(item.final_answer || item.draft_answer) && <Badge type="green">ответ готов</Badge>}</div>
+      <div className="text">{isNoTextRating(item) ? "Оценка без комментария. Ответ на Ozon невозможен." : (item.text || item.pros || item.cons || "Без текста")}</div>
+      <div className="tags"><Badge>{isNoTextRating(item) ? "без комментария" : (item.status || "new")}</Badge>{item.ai_category && <Badge type="yellow">{item.ai_category}</Badge>}{item.ai_risk_level && <Badge type={item.ai_risk_level === "high" ? "red" : ""}>{item.ai_risk_level}</Badge>}{isNoTextRating(item) && <Badge type="yellow">не требует ответа</Badge>}{(item.final_answer || item.draft_answer) && !isNoTextRating(item) && <Badge type="green">ответ готов</Badge>}</div>
     </div>;
   }
 
@@ -371,10 +436,11 @@ function App() {
     if (!selected) return <div className="detail"><Empty>Выбери запись слева</Empty></div>;
     const url = productUrl(selected);
     return <div className="detail"><div className="detailhead"><div><h3>{selected.product_name || selected.sku || "Карточка"}</h3><p className="meta">{selected.kind === "question" ? "Вопрос" : "Отзыв"} · {selected.platform} · {selected.source_status}</p></div><div className="actions">{selected.sku && <button onClick={() => openProduct(selected.sku, selected.platform)}>Карточка товара</button>}{url && <a className="buttonLike" href={url} target="_blank" rel="noreferrer">Открыть на площадке</a>}</div></div>
-      <div className="clientText">{selected.text || selected.pros || selected.cons || "Нет текста"}</div>
+      {isNoTextRating(selected) && <div className="noticeBox">Ozon не позволяет отвечать на оценки без текста. Эта запись видна для аналитики рейтинга, но не участвует в SLA, AI-генерации и автопубликации.</div>}
+      <div className="clientText">{isNoTextRating(selected) ? "Оценка без комментария" : (selected.text || selected.pros || selected.cons || "Нет текста")}</div>
       <div className="twoCols"><div className="exampleBox"><b>AI-категория</b><p>{selected.ai_category || "—"}</p></div><div className="exampleBox"><b>Причина / quality gate</b><p>{selected.ai_reason || selected.publish_blocked_reason || "—"}</p></div></div>
       <label>Финальный ответ</label><textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder="Сгенерируй или введи ответ" />
-      <div className="actions"><button className="primary" onClick={generateSelected}>Сгенерировать 10/10</button><button onClick={saveSelected}>Сохранить</button><button onClick={publishSelected}>Опубликовать</button><button onClick={() => navigator.clipboard.writeText(draft || "")}>Скопировать</button></div>
+      <div className="actions"><button className="primary" disabled={isNoTextRating(selected)} onClick={generateSelected}>Сгенерировать 10/10</button><button disabled={isNoTextRating(selected)} onClick={saveSelected}>Сохранить</button><button disabled={isNoTextRating(selected)} onClick={publishSelected}>Опубликовать</button><button onClick={() => navigator.clipboard.writeText(draft || "")}>Скопировать</button></div>
     </div>;
   }
 
@@ -383,8 +449,15 @@ function App() {
     return <div className="panel"><h3>История публикаций и готовых ответов</h3><table><thead><tr><th>Дата</th><th>Площадка</th><th>Товар</th><th>Статус</th><th>Ответ</th></tr></thead><tbody>{items.slice(0,120).map((x,i)=><tr key={i}><td>{dt(x.updated_at || x.created_at)}</td><td>{x.platform}</td><td>{x.sku || x.product_name}</td><td>{x.status || "—"}</td><td>{x.final_answer || "—"}</td></tr>)}</tbody></table></div>;
   }
 
+  function renderCatalog() {
+    return <Section title="Product Catalog Hub" subtitle="Единый каталог товаров WB/Ozon/ЯМ: рейтинг, отзывы, вопросы и ссылки на карточки" actions={<button className="primary" onClick={() => loadProducts(true)}>Обновить каталог</button>}>
+      <div className="cards wideCards"><Card title="Товаров" value={num(products.length)} /><Card title="С рейтингом" value={num(products.filter(x => x.avg_rating || x.latest_rating).length)} /><Card title="С отзывами" value={num(products.filter(x => x.reviews).length)} /><Card title="С вопросами" value={num(products.filter(x => x.questions).length)} /><Card title="High risk" value={num(products.filter(x => x.high_risk).length)} type="danger"/><Card title="С негативом" value={num(products.filter(x => x.negative).length)} type="warn"/></div>
+      <div className="panel"><table><thead><tr><th>SKU</th><th>Название</th><th>Площадки</th><th>Рейтинг</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th>Ссылка</th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, row.platforms?.[0])}>{row.sku || row.key}</button></td><td>{row.product_name || "—"}</td><td>{(row.platforms || []).join(", ")}</td><td>{row.avg_rating || row.latest_rating || "—"}</td><td>{row.reviews || row.feedbacks_count || 0}</td><td>{row.questions || 0}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>
+    </Section>;
+  }
+
   function renderQuality() {
-    return <Section title="Каталог и качество" subtitle="Товары, жалобы, аномалии, AI Summary и рекомендации" actions={<button className="primary" onClick={() => loadProducts(true)}>Обновить товары</button>}>
+    return <Section title="Quality Hub" subtitle="Товары, жалобы, аномалии, AI Summary и рекомендации" actions={<button className="primary" onClick={() => loadProducts(true)}>Обновить товары</button>}>
       <div className="cards wideCards"><Card title="Товаров" value={num(products.length)} /><Card title="High risk" value={num(products.filter(x => x.high_risk).length)} type="danger"/><Card title="С негативом" value={num(products.filter(x => x.negative).length)} type="warn"/><Card title="Основная тема" value={insights.categories[0]?.[0] || "—"}/></div>
       <div className="layoutTwo"><div className="panel"><h3>AI Summary по товарам</h3><p className="bigText">{insights.summary}</p>{insights.riskyProducts.map(x => <div className="recommendation clickable" key={x.key} onClick={() => openProduct(x.sku || x.key, x.platforms?.[0])}><b>{x.sku || x.key}</b><span>{x.recommendation}</span></div>)}</div><div className="panel"><h3>Тематики</h3>{insights.categories.length ? insights.categories.map(([k,v]) => <div className="metricRow" key={k}><span>{k}</span><b>{v}</b></div>) : <Empty/>}</div></div>
       <div className="layoutTwo"><div className="panel"><h3>Список товаров</h3><table><thead><tr><th>Товар</th><th>Площадки</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th></th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, row.platforms?.[0])}>{row.sku || row.key}</button><br/><small>{row.product_name}</small></td><td>{(row.platforms || []).join(", ")}</td><td>{row.reviews}</td><td>{row.questions}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>{renderProductCard()}</div>
@@ -448,15 +521,33 @@ function App() {
   }
 
   function renderSecurity() {
-    const roles = [{role:"Оператор", rights:"Отзывы, вопросы, ручная проверка ответов"},{role:"Старший оператор", rights:"Очереди, SLA, история публикаций"},{role:"Руководитель", rights:"Control Tower, аналитика, качество, операции"},{role:"Администратор", rights:"Интеграции, роли, настройки, публикация"}];
-    return <Section title="Пользователи и роли" subtitle="Подготовка security-модели релиза 1.0" actions={<button disabled>Подключение авторизации следующим пакетом</button>}>
-      <div className="panel"><table><thead><tr><th>Роль</th><th>Права</th><th>Статус</th></tr></thead><tbody>{roles.map(x => <tr key={x.role}><td><b>{x.role}</b></td><td>{x.rights}</td><td><Badge type="yellow">модель заложена</Badge></td></tr>)}</tbody></table></div>
+    const roles = Object.keys(roleRights);
+    const rights = [
+      ["view", "Просмотр"],
+      ["edit", "Редактирование"],
+      ["publish", "Публикация"],
+      ["admin", "Администрирование"],
+    ];
+
+    function toggleRight(role, moduleId, right) {
+      const next = { ...roleRights, [role]: { ...(roleRights[role] || {}) } };
+      next[role][moduleId] = { ...(next[role][moduleId] || {}) };
+      next[role][moduleId][right] = !next[role][moduleId][right];
+      setRoleRights(next);
+      localStorage.setItem("karatov_role_rights", JSON.stringify(next));
+      setMessage("Матрица прав сохранена локально. Backend-аудит и авторизация подключаются следующим пакетом.");
+    }
+
+    return <Section title="Пользователи и роли" subtitle="Матрица доступа по модулям: просмотр, редактирование, публикация, администрирование" actions={<button onClick={() => { setRoleRights(DEFAULT_ROLE_RIGHTS); localStorage.setItem("karatov_role_rights", JSON.stringify(DEFAULT_ROLE_RIGHTS)); }}>Сбросить к стандарту</button>}>
+      <div className="panel"><h3>Роли</h3><p className="bigText">Администратор или руководитель сможет управлять доступом к модулям. Сейчас матрица работает на уровне интерфейса и готова к подключению backend-авторизации.</p></div>
+      <div className="panel wide"><table><thead><tr><th>Роль</th><th>Модуль</th>{rights.map(([id, title]) => <th key={id}>{title}</th>)}</tr></thead><tbody>{roles.flatMap(role => ACCESS_MODULES.map(([moduleId, moduleTitle], i) => <tr key={`${role}-${moduleId}`}><td>{i === 0 ? <b>{role}</b> : ""}</td><td>{moduleTitle}</td>{rights.map(([rightId]) => <td key={rightId}><input type="checkbox" checked={!!roleRights?.[role]?.[moduleId]?.[rightId]} onChange={() => toggleRight(role, moduleId, rightId)} /></td>)}</tr>))}</tbody></table></div>
     </Section>;
   }
 
   function content() {
     if (page === "tower") return renderTower();
     if (page === "communications") return renderCommunications();
+    if (page === "catalog") return renderCatalog();
     if (page === "quality") return renderQuality();
     if (page === "operations") return renderOperations();
     if (page === "fbo") return renderFbo();
