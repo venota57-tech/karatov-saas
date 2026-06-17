@@ -157,7 +157,7 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
             g["rating_count"] += 1
             if x.rating <= 3:
                 g["negative"] += 1
-        if x.ai_sentiment == "negative":
+        if getattr(x, "ai_sentiment", None) == "negative":
             g["negative"] += 1
         if x.ai_risk_level == "high":
             g["high_risk"] += 1
