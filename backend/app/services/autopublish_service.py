@@ -1,258 +1,202 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from ..config import settings
-from ..database import SessionLocal
-from sqlalchemy import or_
-from ..models import Review, Question
-from ..ai.answer_generator import AnswerGenerator
-from ..services.automation_rules import get_rules, update_rules, apply_publication_rules, DEFAULT_RULES
-from ..services.publishing_service import publish_review, publish_question
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.database import SessionLocal
+from app.models import Review, Question
+from app.services.automation_rules import get_rules
+
+_status: dict[str, Any] = {
+    "enabled": False,
+    "last_started_at": None,
+    "last_finished_at": None,
+    "last_result": None,
+    "last_error": None,
+    "mode": "dry_run",
+    "queue_policy": "separate_from_sync",
+}
 
 
-SUPPORTED_PLATFORMS = ["WB", "OZON", "YM"]
+def _now():
+    return datetime.now(timezone.utc).isoformat()
 
 
-def _normalize_matrix(matrix: dict | None) -> dict[str, dict[str, bool]]:
-    matrix = matrix if isinstance(matrix, dict) else {}
-    result: dict[str, dict[str, bool]] = {}
-    for platform in SUPPORTED_PLATFORMS:
-        raw = matrix.get(platform) or matrix.get(platform.lower()) or {}
-        result[platform] = {
-            "reviews": bool(raw.get("reviews")),
-            "questions": bool(raw.get("questions")),
-        }
-    return result
+def _matrix_enabled(rules: dict, platform: str, kind: str) -> bool:
+    matrix = rules.get("autopublish_matrix") or {}
+    return bool((matrix.get(platform.upper()) or {}).get(kind))
 
 
-def _merged_rules(db) -> dict[str, Any]:
-    row = get_rules(db)
-    rules = dict(DEFAULT_RULES)
-    rules.update(row.rules or {})
-    rules["autopublish_matrix"] = _normalize_matrix(rules.get("autopublish_matrix"))
-    return rules
+def _can_publish_review(review: Review, rules: dict) -> tuple[bool, str]:
+    if not settings.enable_marketplace_publishing:
+        return False, "ENABLE_MARKETPLACE_PUBLISHING=false: режим безопасной синхронизации без публикации"
+    if not bool(rules.get("real_autopublish_enabled", False)):
+        return False, "real_autopublish_enabled=false"
+    if not _matrix_enabled(rules, review.platform or "", "reviews"):
+        return False, f"Матрица автопубликации отключена для {review.platform} reviews"
+    if not review.final_answer:
+        return False, "Нет final_answer"
+    min_rating = int(rules.get("positive_review_min_rating") or 5)
+    if review.rating is not None and review.rating < min_rating:
+        return False, f"Оценка {review.rating} ниже минимальной {min_rating}"
+    if review.ai_risk_level in set(rules.get("require_review_risk_levels") or ["medium", "high"]):
+        return False, f"Риск {review.ai_risk_level} требует ручной проверки"
+    if review.ai_category in set(rules.get("require_review_categories") or []):
+        return False, f"Категория {review.ai_category} требует ручной проверки"
+    if review.has_answer:
+        return False, "Уже есть ответ"
+    return True, "ok"
 
 
-def get_autopublish_rules(db) -> dict[str, Any]:
-    rules = _merged_rules(db)
-    rules["openai"] = {
-        "api_key_found": bool(settings.openai_api_key),
-        "model": settings.openai_model,
-        "ai_generation_enabled": bool(rules.get("ai_generation_enabled", True)),
-        "fallback_to_local_templates": bool(rules.get("ai_fallback_to_local_templates", True)),
-    }
-    rules["publishing"] = {
-        "enable_marketplace_publishing": bool(settings.enable_marketplace_publishing),
-        "mode": "real_publish" if settings.enable_marketplace_publishing else "dry_run",
-    }
-    return rules
+def _can_publish_question(q: Question, rules: dict) -> tuple[bool, str]:
+    if not settings.enable_marketplace_publishing:
+        return False, "ENABLE_MARKETPLACE_PUBLISHING=false: режим безопасной синхронизации без публикации"
+    if not bool(rules.get("real_autopublish_enabled", False)):
+        return False, "real_autopublish_enabled=false"
+    if not _matrix_enabled(rules, q.platform or "", "questions"):
+        return False, f"Матрица автопубликации отключена для {q.platform} questions"
+    if not q.final_answer:
+        return False, "Нет final_answer"
+    if q.ai_risk_level in {"medium", "high"}:
+        return False, f"Риск {q.ai_risk_level} требует ручной проверки"
+    if q.has_answer:
+        return False, "Уже есть ответ"
+    return True, "ok"
 
 
-def save_autopublish_rules(db, incoming: dict[str, Any]) -> dict[str, Any]:
-    current = _merged_rules(db)
-    payload = dict(current)
-    payload.update(incoming or {})
-    payload["autopublish_matrix"] = _normalize_matrix(payload.get("autopublish_matrix"))
-    row = update_rules(db, payload)
-    return get_autopublish_rules(db)
-
-
-def _platform_enabled(rules: dict[str, Any], platform: str, content_type: str) -> bool:
-    matrix = _normalize_matrix(rules.get("autopublish_matrix"))
-    return bool(matrix.get((platform or "").upper(), {}).get(content_type))
-
-
-def _is_publishable_source(obj, content_type: str) -> bool:
-    platform = (obj.platform or "").upper()
-    expected = {
-        "WB": "wb_unanswered",
-        "OZON": "ozon_unanswered",
-        "YM": "ym_unanswered",
-    }.get(platform)
-    status = (obj.status or "").lower()
-    operational = (obj.operational_status or "").lower()
-    return bool(
-        obj.source_status == expected
-        and obj.has_answer is not True
-        and (operational in {"", "needs_response"} or status in {"ready_to_publish", "ready_to_review"})
-    )
-
-
-def _answer_payload(obj, content_type: str) -> dict[str, Any]:
-    payload = {
-        "platform": obj.platform,
-        "sku": obj.sku,
-        "product_name": obj.product_name,
-        "text": obj.text,
-        "client_name": obj.client_name,
-    }
-    if content_type == "reviews":
-        payload.update({"rating": obj.rating, "pros": obj.pros, "cons": obj.cons})
-    return payload
-
-
-def _save_generation(obj, result: dict[str, Any], content_type: str) -> None:
-    obj.ai_category = result.get("category")
-    if hasattr(obj, "ai_sentiment"):
-        obj.ai_sentiment = result.get("sentiment")
-    obj.ai_risk_level = result.get("risk_level")
-    obj.ai_can_autopublish = bool(result.get("can_autopublish"))
-    obj.ai_reason = result.get("reason")
-    obj.ai_tags = result.get("tags") or obj.ai_tags
-    obj.draft_answer = result.get("answer_text") or None
-    obj.final_answer = result.get("answer_text") or None
-    if not obj.final_answer:
-        obj.status = "answer_rejected_quality_gate"
-        obj.publish_blocked_reason = result.get("reason") or "Ответ не прошел quality gate 10/10"
-    else:
-        obj.status = "ready_to_publish" if _is_publishable_source(obj, content_type) else "local_draft"
-        obj.publish_blocked_reason = None
-    obj.updated_at = datetime.utcnow()
-
-
-def _rows_for(db, model, rules: dict[str, Any], content_type: str, limit: int):
-    enabled_platforms = [p for p in SUPPORTED_PLATFORMS if _platform_enabled(rules, p, content_type)]
-    if not enabled_platforms:
-        return []
-    source_statuses = [f"{p.lower()}_unanswered" for p in enabled_platforms]
-    return (
-        db.query(model)
-        .filter(model.platform.in_(enabled_platforms))
-        .filter(model.source_status.in_(source_statuses))
-        .filter(or_(model.has_answer == False, model.has_answer.is_(None)))  # noqa: E712
-        .filter(or_(
-            model.operational_status == "needs_response",
-            model.operational_status.is_(None),
-            model.status.in_(["ready_to_publish", "ready_to_review"])
-        ))
-        .order_by(model.created_at_marketplace.asc().nullslast(), model.id.asc())
-        .limit(limit)
-        .all()
-    )
-
-
-async def _process_one(db, obj, content_type: str, rules: dict[str, Any], generator: AnswerGenerator) -> dict[str, Any]:
-    if not _platform_enabled(rules, obj.platform, content_type):
-        return {"status": "skipped", "reason": "autopublish disabled for platform/content_type"}
-    if not _is_publishable_source(obj, content_type):
-        obj.publish_blocked_reason = "Не находится в актуальной очереди площадки “без ответа”."
-        obj.updated_at = datetime.utcnow()
-        db.commit()
-        return {"status": "skipped", "reason": obj.publish_blocked_reason}
-
-    # Нормализуем старые строки перед публикацией, чтобы publish_service не отклонил их.
-    obj.operational_status = "needs_response"
-    obj.has_answer = False
-
-    if not (obj.final_answer or "").strip():
-        payload = _answer_payload(obj, content_type)
-        if content_type == "reviews":
-            result = generator.generate_for_review_until_pass(payload)
-            result["platform"] = obj.platform
-            result = apply_publication_rules(result, "review", obj.rating, db)
-        else:
-            result = generator.generate_for_question_until_pass(payload)
-            result["platform"] = obj.platform
-            result = apply_publication_rules(result, "question", None, db)
-        _save_generation(obj, result, content_type)
-        db.commit()
-
-    if not (obj.final_answer or "").strip():
-        return {"status": "skipped", "reason": obj.publish_blocked_reason or "no final answer"}
-
-    # The matrix is the user's final permission. Risk/category rules still may block via ai_can_autopublish.
-    if rules.get("autopublish_require_ai_can_autopublish", False) and not obj.ai_can_autopublish:
-        obj.publish_blocked_reason = obj.ai_reason or "ai_can_autopublish=false"
-        obj.updated_at = datetime.utcnow()
-        db.commit()
-        return {"status": "skipped", "reason": obj.publish_blocked_reason}
-
-    if content_type == "reviews":
-        result = await publish_review(db, obj.id, response_origin='auto_app')
-    else:
-        result = await publish_question(db, obj.id, response_origin='auto_app')
-
-    # In dry-run mode publish_* intentionally does not mark has_answer. For operational clarity mark it as ready, not archived.
-    if result.get("status") == "dry_run":
-        obj.status = "ready_to_publish"
-        obj.operational_status = "needs_response"
-        obj.publish_blocked_reason = "Dry-run: ENABLE_MARKETPLACE_PUBLISHING=false, ответ подготовлен, но не отправлен."
-        db.commit()
-        return {"status": "dry_run", "reason": obj.publish_blocked_reason}
-
-    return {"status": "published", "message": result.get("message")}
-
-
-async def autopublish_once() -> dict[str, Any]:
-    db = SessionLocal()
-    stats = {
-        "ok": True,
-        "checked": 0,
-        "generated_or_used_existing": 0,
-        "published": 0,
-        "dry_run": 0,
-        "skipped": 0,
-        "errors": [],
-    }
+async def autopublish_once(db: Session | None = None) -> dict[str, Any]:
+    own_db = db is None
+    db = db or SessionLocal()
+    _status["last_started_at"] = _now()
+    _status["mode"] = "real_publish" if settings.enable_marketplace_publishing else "dry_run"
     try:
-        rules = _merged_rules(db)
-        if not rules.get("real_autopublish_enabled", False):
-            return {**stats, "reason": "real_autopublish_enabled=false"}
+        rules = get_rules(db).rules or {}
+        max_per_run = int(rules.get("autopublish_max_per_run") or 10)
+        pause = max(1, int(rules.get("autopublish_pause_between_items_seconds") or 30))
 
-        limit = max(1, min(100, int(rules.get("autopublish_max_per_run", 10))))
-        pause_between = max(1, int(rules.get("autopublish_pause_between_items_seconds", 8)))
-        generator = AnswerGenerator(rules)
+        result = {"checked": 0, "generated": 0, "published": 0, "skipped": 0, "errors": [], "mode": _status["mode"]}
 
-        tasks = [
-            ("reviews", Review, _rows_for(db, Review, rules, "reviews", limit)),
-            ("questions", Question, _rows_for(db, Question, rules, "questions", limit)),
-        ]
+        reviews = (
+            db.query(Review)
+            .filter(Review.operational_status == "needs_response")
+            .filter(Review.final_answer.isnot(None))
+            .order_by(Review.created_at_marketplace.asc().nullslast())
+            .limit(max_per_run)
+            .all()
+        )
+        questions = (
+            db.query(Question)
+            .filter(Question.operational_status == "needs_response")
+            .filter(Question.final_answer.isnot(None))
+            .order_by(Question.created_at_marketplace.asc().nullslast())
+            .limit(max_per_run)
+            .all()
+        )
 
-        for content_type, _model, rows in tasks:
-            for obj in rows:
-                if stats["checked"] >= limit:
+        # Safety: if publishing disabled, only explain why and never call WB/Ozon.
+        for item in reviews:
+            result["checked"] += 1
+            ok, reason = _can_publish_review(item, rules)
+            if not ok:
+                item.publish_blocked_reason = reason
+                result["skipped"] += 1
+                continue
+            try:
+                await _publish_review(item)
+                item.status = "auto_published"
+                item.response_origin = "auto_app"
+                item.has_answer = True
+                result["published"] += 1
+                await asyncio.sleep(pause)
+            except Exception as exc:
+                item.publish_blocked_reason = str(exc)
+                result["errors"].append(f"review {item.id}: {exc}")
+                # После 429 не добиваем API — завершаем проход.
+                if "429" in str(exc):
                     break
-                stats["checked"] += 1
-                try:
-                    before_answer = bool((obj.final_answer or "").strip())
-                    result = await _process_one(db, obj, content_type, rules, generator)
-                    if not before_answer and (obj.final_answer or "").strip():
-                        stats["generated_or_used_existing"] += 1
-                    if result["status"] == "published":
-                        stats["published"] += 1
-                    elif result["status"] == "dry_run":
-                        stats["dry_run"] += 1
-                    else:
-                        stats["skipped"] += 1
-                    await asyncio.sleep(pause_between)
-                except Exception as exc:
-                    db.rollback()
-                    obj.publish_blocked_reason = str(exc)[:1000]
-                    obj.updated_at = datetime.utcnow()
-                    db.commit()
-                    stats["errors"].append({"id": obj.id, "platform": obj.platform, "type": content_type, "error": str(exc)})
-                    stats["skipped"] += 1
-        return stats
+
+        for item in questions:
+            if result["published"] >= max_per_run:
+                break
+            result["checked"] += 1
+            ok, reason = _can_publish_question(item, rules)
+            if not ok:
+                item.publish_blocked_reason = reason
+                result["skipped"] += 1
+                continue
+            try:
+                await _publish_question(item)
+                item.status = "auto_published"
+                item.response_origin = "auto_app"
+                item.has_answer = True
+                result["published"] += 1
+                await asyncio.sleep(pause)
+            except Exception as exc:
+                item.publish_blocked_reason = str(exc)
+                result["errors"].append(f"question {item.id}: {exc}")
+                if "429" in str(exc):
+                    break
+
+        db.commit()
+        _status["last_result"] = result
+        _status["last_finished_at"] = _now()
+        _status["last_error"] = None
+        return result
+    except Exception as exc:
+        if db:
+            db.rollback()
+        _status["last_error"] = str(exc)
+        _status["last_finished_at"] = _now()
+        raise
     finally:
-        db.close()
+        if own_db:
+            db.close()
 
 
-async def autopublish_loop():
-    await asyncio.sleep(20)
+async def _publish_review(review: Review) -> None:
+    platform = (review.platform or "").upper()
+    if platform == "WB":
+        from app.services.publishing_service import publish_review
+        res = publish_review(review)
+        if asyncio.iscoroutine(res):
+            await res
+        return
+    if platform == "OZON":
+        from app.services.publishing_service import publish_review
+        res = publish_review(review)
+        if asyncio.iscoroutine(res):
+            await res
+        return
+    raise RuntimeError(f"Публикация для площадки {platform} не подключена")
+
+
+async def _publish_question(question: Question) -> None:
+    platform = (question.platform or "").upper()
+    from app.services.publishing_service import publish_question
+    res = publish_question(question)
+    if asyncio.iscoroutine(res):
+        await res
+
+
+async def autopublish_loop() -> None:
     while True:
-        interval = 900
         try:
-            result = await autopublish_once()
-            print(f"[autopublish] result: {result}")
             db = SessionLocal()
             try:
-                rules = _merged_rules(db)
-                interval = max(60, int(rules.get("autopublish_interval_seconds", 900)))
+                # Цикл ничего не публикует, если выключен Render flag или правила.
+                await autopublish_once(db)
             finally:
                 db.close()
-        except Exception as e:
-            print(f"[autopublish] loop error: {e}")
-        await asyncio.sleep(interval)
+        except Exception as exc:
+            _status["last_error"] = str(exc)
+        await asyncio.sleep(max(300, int(getattr(settings, "autopublish_interval_seconds", 900) or 900)))
+
+
+def get_autopublish_status() -> dict[str, Any]:
+    _status["enabled"] = bool(settings.enable_marketplace_publishing)
+    _status["mode"] = "real_publish" if settings.enable_marketplace_publishing else "dry_run"
+    return dict(_status)
