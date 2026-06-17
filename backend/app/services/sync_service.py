@@ -670,6 +670,10 @@ async def _maybe_autopublish(db: Session, item_type: str) -> dict[str, Any]:
     if not rules.get('auto_generate_on_sync', True):
         return {**stats, 'disabled_reason': 'Автогенерация при синхронизации выключена в Правилах ИИ.'}
     real_autopublish_allowed = bool(rules.get('real_autopublish_enabled') and settings.enable_marketplace_publishing)
+    # Safe-sync mode: when real publishing is disabled, do not spend OpenAI tokens and time
+    # creating drafts during every sync cycle unless the user explicitly enabled it.
+    if not real_autopublish_allowed and not bool(rules.get('create_drafts_on_sync', False)):
+        return {**stats, 'publish_mode': 'sync_only', 'disabled_reason': 'Синхронизация работает без генерации черновиков: real publish выключен, create_drafts_on_sync=false.'}
     if not real_autopublish_allowed:
         stats['publish_mode'] = 'drafts_only'
         stats['disabled_reason'] = 'Черновики будут созданы, но реальная автопубликация выключена: нужен real_autopublish_enabled=true и ENABLE_MARKETPLACE_PUBLISHING=true.'
@@ -1281,11 +1285,19 @@ async def _run_wb_block_safely_v36(block_name: str, source: str) -> dict[str, An
 
 
 def _wb_sweep_blocks_v36() -> list[str]:
+    # Productive order: feedback endpoints first, question endpoints last.
+    # In this seller account WB questions sometimes trigger 429. Putting questions at
+    # the end lets reviews/answered/archive move forward before a strict questions
+    # endpoint starts its own cooldown.
     blocks: list[str] = []
     if settings.wb_operational_sync_enabled:
-        blocks.extend(WB_OPERATIONAL_BLOCKS)
+        blocks.append('feedbacks_unanswered')
     if settings.wb_backfill_sync_enabled or getattr(settings, 'wb_archive_backfill_always_enabled', True):
-        blocks.extend(WB_BACKFILL_BLOCKS)
+        blocks.extend(['feedbacks_answered', 'feedbacks_archive'])
+    if settings.wb_operational_sync_enabled:
+        blocks.append('questions_unanswered')
+    if settings.wb_backfill_sync_enabled or getattr(settings, 'wb_archive_backfill_always_enabled', True):
+        blocks.append('questions_answered')
     if not blocks:
         blocks = _enabled_blocks()
     seen = set()

@@ -79,12 +79,13 @@ function bool(value) { return value ? "да" : "нет"; }
 function num(value) { return Number(value || 0).toLocaleString("ru-RU"); }
 function avg(nums) { const v = nums.filter(x => Number.isFinite(Number(x))); return v.length ? (v.reduce((a,b)=>a+Number(b),0)/v.length).toFixed(2) : "—"; }
 function pretty(obj) { return typeof obj === "string" ? obj : JSON.stringify(obj, null, 2); }
+function normPlatform(value) { return String(value || "").trim().toUpperCase(); }
 
 function productUrl(item) {
   if (item?.product_url) return item.product_url;
   if (!item?.sku) return null;
-  if (item.platform === "WB") return `https://www.wildberries.ru/catalog/${item.sku}/detail.aspx`;
-  if (item.platform === "OZON") return `https://www.ozon.ru/search/?text=${item.sku}`;
+  if (normPlatform(item.platform) === "WB") return `https://www.wildberries.ru/catalog/${item.sku}/detail.aspx`;
+  if (normPlatform(item.platform) === "OZON") return `https://www.ozon.ru/search/?text=${item.sku}`;
   return null;
 }
 
@@ -102,7 +103,7 @@ function hasText(item) {
 }
 
 function isNoTextRating(item) {
-  return (item?.platform || "").toUpperCase() === "OZON" && item?.kind === "review" && !hasText(item);
+  return normPlatform(item?.platform) === "OZON" && item?.kind === "review" && !hasText(item);
 }
 
 function canRespond(item) {
@@ -149,7 +150,7 @@ function App() {
   const [roleRights, setRoleRights] = useState(loadSavedRights);
 
   const rawItems = useMemo(() => [...reviews.map(x => ({ ...x, kind: "review" })), ...questions.map(x => ({ ...x, kind: "question" }))], [reviews, questions]);
-  const platformItems = useMemo(() => platform === "ALL" ? rawItems : rawItems.filter(x => x.platform === platform), [rawItems, platform]);
+  const platformItems = useMemo(() => platform === "ALL" ? rawItems : rawItems.filter(x => normPlatform(x.platform) === platform), [rawItems, platform]);
   const visibleItems = useMemo(() => platformItems.filter(matchesFilters), [platformItems, state, search]);
   const visibleReviews = visibleItems.filter(x => x.kind === "review");
   const visibleQuestions = visibleItems.filter(x => x.kind === "question");
@@ -166,6 +167,17 @@ function App() {
   }, []);
 
   useEffect(() => { loadProducts(false); }, [platform]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const platformMismatch = platform !== "ALL" && normPlatform(selected.platform) !== platform;
+    const kindMismatch = (kind === "reviews" && selected.kind !== "review") || (kind === "questions" && selected.kind !== "question");
+    const hiddenByFilters = !matchesFilters(selected);
+    if (platformMismatch || kindMismatch || hiddenByFilters) {
+      setSelected(null);
+      setDraft("");
+    }
+  }, [platform, state, search, kind, reviews, questions]);
 
   function matchesFilters(item) {
     if (state === "unanswered" && !needsResponse(item)) return false;
@@ -196,9 +208,9 @@ function App() {
       noTextRatings: noTextRatings.length,
       risks: risks.length,
       avgRating: avg(reviewsOnly.map(x => x.rating)),
-      wb: rawItems.filter(x => x.platform === "WB").length,
-      ozon: rawItems.filter(x => x.platform === "OZON").length,
-      ym: rawItems.filter(x => x.platform === "YM").length,
+      wb: rawItems.filter(x => normPlatform(x.platform) === "WB").length,
+      ozon: rawItems.filter(x => normPlatform(x.platform) === "OZON").length,
+      ym: rawItems.filter(x => normPlatform(x.platform) === "YM").length,
     };
   }
 
@@ -343,7 +355,7 @@ function App() {
   }
 
   function renderPlatformSwitch() {
-    return <div className="marketSwitch">{PLATFORMS.map(p => <button key={p.id} className={platform === p.id ? "active" : ""} onClick={() => setPlatform(p.id)}>{p.title}</button>)}</div>;
+    return <div className="marketSwitch">{PLATFORMS.map(p => <button key={p.id} className={platform === p.id ? "active" : ""} onClick={() => { setPlatform(p.id); setSelected(null); setDraft(""); }}>{p.title}</button>)}</div>;
   }
 
   function renderSidebar() {

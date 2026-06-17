@@ -116,7 +116,7 @@ class WildberriesClient:
             configured = float(getattr(settings, 'wb_global_min_request_interval_seconds', 12))
         except Exception:
             configured = 12.0
-        return max(float(self.request_pause_seconds), configured, 8.0)
+        return max(float(self.request_pause_seconds), configured, 1.0)
 
     def _default_circuit_breaker_seconds(self) -> float:
         try:
@@ -124,7 +124,7 @@ class WildberriesClient:
             configured = float(getattr(settings, 'wb_global_429_circuit_breaker_seconds', 3600))
         except Exception:
             configured = 3600.0
-        return max(configured, 900.0)
+        return max(configured, 60.0)
 
     async def _wait_wb_global_gate(self) -> None:
         global _WB_NEXT_ALLOWED_AT, _WB_CIRCUIT_UNTIL, _WB_ADAPTIVE_INTERVAL_SECONDS
@@ -145,8 +145,13 @@ class WildberriesClient:
 
     async def _open_wb_circuit(self, retry_after: str | None) -> None:
         global _WB_NEXT_ALLOWED_AT, _WB_CIRCUIT_UNTIL, _WB_ADAPTIVE_INTERVAL_SECONDS
-        delay = self._parse_retry_after(retry_after) or self._default_circuit_breaker_seconds()
-        delay = max(delay, self._default_circuit_breaker_seconds())
+        parsed_retry = self._parse_retry_after(retry_after)
+        default_delay = self._default_circuit_breaker_seconds()
+        # WB can return a long Retry-After. For CX Hub we keep the in-app circuit bounded
+        # by WB_GLOBAL_429_CIRCUIT_BREAKER_SECONDS so one strict endpoint does not freeze
+        # the entire marketplace workspace for an hour. The per-block scheduler still pauses
+        # the failed block separately.
+        delay = default_delay if parsed_retry is None else min(max(parsed_retry, 60.0), default_delay)
         async with _WB_GATE_LOCK:
             now = time.monotonic()
             _WB_CIRCUIT_UNTIL = max(_WB_CIRCUIT_UNTIL, now + delay)
