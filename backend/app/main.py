@@ -28,6 +28,13 @@ except Exception as e:
     ozon_auto_sync_loop = None
     sync_ozon_all = None
 
+try:
+    from app.services.wb_booking_service import wb_booking_loop, ensure_booking_tables
+except Exception as e:
+    print(f"[startup] WB booking unavailable: {e}")
+    wb_booking_loop = None
+    ensure_booking_tables = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +46,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[startup] DB migration error: {e}")
 
+    try:
+        if ensure_booking_tables:
+            ensure_booking_tables()
+            print("[startup] booking tables ready")
+    except Exception as e:
+        print(f"[startup] booking migration error: {e}")
+
     if wb_auto_sync_loop and settings.wb_api_token:
         tasks.append(asyncio.create_task(wb_auto_sync_loop()))
         print("[startup] WB auto sync loop started")
@@ -46,6 +60,10 @@ async def lifespan(app: FastAPI):
     if ozon_auto_sync_loop and settings.ozon_client_id and settings.ozon_api_key:
         tasks.append(asyncio.create_task(ozon_auto_sync_loop()))
         print("[startup] Ozon auto sync loop started")
+
+    if wb_booking_loop and settings.wb_api_token:
+        tasks.append(asyncio.create_task(wb_booking_loop()))
+        print("[startup] WB booking loop started")
 
     tasks.append(asyncio.create_task(autopublish_loop()))
     print("[startup] autopublish loop started")
@@ -79,6 +97,7 @@ include_router_safe("app.routes.autopublish_settings")
 include_router_safe("app.routes.sync")
 include_router_safe("app.routes.ozon_sync")
 include_router_safe("app.routes.analytics")
+include_router_safe("app.routes.wb_booking")
 
 
 @app.get("/health")
@@ -131,10 +150,7 @@ async def autopublish():
 @app.post("/ozon-sync/all")
 async def ozon_sync_all_compat():
     if sync_ozon_all is None:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Ozon sync service недоступен"}
-        )
+        return JSONResponse(status_code=500, content={"error": "Ozon sync service недоступен"})
 
     db = SessionLocal()
     try:
@@ -163,9 +179,7 @@ def system_status():
             "ozon_client_id": bool(settings.ozon_client_id),
             "ozon_api_key": bool(settings.ozon_api_key),
         },
-        "openai": {
-            "model": settings.openai_model,
-        },
+        "openai": {"model": settings.openai_model},
         "publishing": {
             "enable_marketplace_publishing": bool(settings.enable_marketplace_publishing),
             "mode": "real_publish" if settings.enable_marketplace_publishing else "dry_run",
@@ -186,22 +200,13 @@ if os.path.exists(assets_path):
 def serve_frontend():
     if os.path.exists(index_path):
         return FileResponse(index_path)
-
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "frontend/dist/index.html не найден",
-            "frontend_path": frontend_path,
-        },
-    )
+    return JSONResponse(status_code=500, content={"error": "frontend/dist/index.html не найден", "frontend_path": frontend_path})
 
 
 @app.get("/{full_path:path}")
 def serve_frontend_fallback(full_path: str):
-    if full_path.startswith(("api/", "system/", "sync/", "settings/", "reports", "summary", "reviews", "questions")):
+    if full_path.startswith(("api/", "system/", "sync/", "settings/", "reports", "summary", "reviews", "questions", "wb-booking")):
         return JSONResponse(status_code=404, content={"error": "Not found"})
-
     if os.path.exists(index_path):
         return FileResponse(index_path)
-
     return JSONResponse(status_code=404, content={"error": "Frontend not found"})
