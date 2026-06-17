@@ -69,9 +69,9 @@ def summary(platform: str = 'ALL', db: Session = Depends(get_db)):
         'by_type': by_type,
         'by_status': by_status,
         'api_status': {
-            'wb': 'pending_adapter',
-            'ozon': 'pending_adapter',
-            'message': 'Реестр и статусы готовы. Подключение конкретных методов актов/возвратов выполняется безопасным адаптером, без имитации данных.',
+            'wb': 'live_adapter_enabled',
+            'ozon': 'live_adapter_enabled',
+            'message': 'Live adapter подключен: операции тянутся из доступных API WB/Ozon. Если метод недоступен по правам токена, это отображается в результате синхронизации без демо-данных.',
         }
     }
 
@@ -89,13 +89,7 @@ def update_operation(operation_id: int, payload: OperationUpdate, db: Session = 
     return _serialize(row)
 
 @router.post('/sync')
-def sync_operations(platform: str = 'ALL'):
-    # Не фейкуем операции: этот endpoint показывает, что слой реестра готов,
-    # а конкретный WB/Ozon adapter нужно подключить к выбранным официальным методам.
-    return {
-        'ok': True,
-        'platform': platform,
-        'created': 0,
-        'updated': 0,
-        'message': 'Operations Hub готов к приему актов/возвратов. API-адаптеры WB/Ozon подключаются следующим безопасным слоем без демо-данных.',
-    }
+async def sync_operations(platform: str = 'ALL', db: Session = Depends(get_db)):
+    run_lightweight_migrations()
+    from ..services.operations_sync_service import OperationsSyncService
+    return await OperationsSyncService(db).sync(platform=platform)

@@ -24,7 +24,7 @@ router = APIRouter(prefix="/wb-booking", tags=["wb-booking"])
 _state: dict[str, Any] = {
     "enabled": False,
     "mode": "auto_book",
-    "work_time_mode": "auto",
+    "work_time_mode": getattr(settings, "wb_booking_default_work_time_mode", "auto"),
     "warehouses": ["Коледино", "Электросталь"],
     "supply_type": "Суперсейф",
     "coefficient_limit": 20,
@@ -47,6 +47,52 @@ _state: dict[str, Any] = {
     "closed_target_dates": [],
 }
 
+_PERSIST_NAME = "slot_hunter"
+_PERSIST_KEYS = {
+    "enabled", "mode", "work_time_mode", "warehouses", "supply_type", "coefficient_limit",
+    "start_date", "every_n_workdays", "horizon_days", "work_time_from", "work_time_to",
+    "telegram_enabled", "email_enabled", "email_recipients", "closed_target_dates"
+}
+
+def _public_state_for_persist() -> dict[str, Any]:
+    return {k: v for k, v in _state.items() if k in _PERSIST_KEYS}
+
+def _load_persisted_state() -> None:
+    global _CONFIG_LOADED
+    if _CONFIG_LOADED:
+        return
+    try:
+        from ..database import SessionLocal
+        from ..models import AutomationRules
+        db = SessionLocal()
+        try:
+            row = db.query(AutomationRules).filter(AutomationRules.name == _PERSIST_NAME).first()
+            if row and isinstance(row.rules, dict):
+                _state.update({k: v for k, v in row.rules.items() if k in _PERSIST_KEYS})
+        finally:
+            db.close()
+        _CONFIG_LOADED = True
+    except Exception as exc:
+        _state["last_error"] = f"slot_hunter_load_config: {exc}"
+
+def _persist_state() -> None:
+    try:
+        from ..database import SessionLocal
+        from ..models import AutomationRules
+        db = SessionLocal()
+        try:
+            row = db.query(AutomationRules).filter(AutomationRules.name == _PERSIST_NAME).first()
+            if not row:
+                row = AutomationRules(name=_PERSIST_NAME, rules={})
+                db.add(row)
+            row.rules = _public_state_for_persist()
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:
+        _state["last_error"] = f"slot_hunter_save_config: {exc}"
+
+_CONFIG_LOADED = False
 _lock = asyncio.Lock()
 
 
@@ -240,6 +286,7 @@ async def _notify_no_slots() -> dict[str, Any]:
 
 @router.get("/status")
 def status():
+    _load_persisted_state()
     return _status_payload()
 
 
@@ -256,6 +303,7 @@ def save_config(cfg: BookingConfig):
     data.pop("interval_workdays", None)
     _state.update(data)
     _event("config_saved", "Настройки Slot Hunter сохранены", {k: v for k, v in data.items() if "token" not in k and "chat" not in k})
+    _persist_state()
     return _status_payload()
 
 
@@ -265,6 +313,7 @@ def start(cfg: BookingConfig | None = None):
         save_config(cfg)
     _state["enabled"] = True
     _event("started", f"Slot Hunter включен. Режим: {_state.get('mode')}. Время работы: {_runtime_label()}.")
+    _persist_state()
     return _status_payload()
 
 
@@ -272,6 +321,7 @@ def start(cfg: BookingConfig | None = None):
 def stop():
     _state["enabled"] = False
     _event("stopped", "Мониторинг Slot Hunter остановлен")
+    _persist_state()
     return _status_payload()
 
 
@@ -304,6 +354,7 @@ async def notify_test():
 
 
 async def booking_auto_loop() -> None:
+    _load_persisted_state()
     await asyncio.sleep(15)
     while True:
         try:
@@ -316,3 +367,6 @@ async def booking_auto_loop() -> None:
             _state["last_error"] = str(exc)
             _event("error", f"Ошибка Slot Hunter: {exc}")
         await asyncio.sleep(max(60, int(settings.wb_booking_auto_check_interval_seconds)))
+
+
+booking_auto_check_loop = booking_auto_loop

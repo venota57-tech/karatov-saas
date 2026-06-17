@@ -75,6 +75,35 @@ function asList(data) {
 function dt(value) { return value ? String(value).replace("T", " ").slice(0, 19) : "—"; }
 function day(value) { return value ? String(value).slice(0, 10) : "Без даты"; }
 function month(value) { return value ? String(value).slice(0, 7) : "Без месяца"; }
+
+
+function week(value) {
+  if (!value) return "Без недели";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Без недели";
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const days = Math.floor((d - jan1) / 86400000);
+  const w = Math.ceil((days + jan1.getDay() + 1) / 7);
+  return `${d.getFullYear()}-W${String(w).padStart(2, "0")}`;
+}
+
+function minutesBetween(start, end) {
+  if (!start || !end) return null;
+  const a = new Date(start);
+  const b = new Date(end);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  const minutes = Math.round((b - a) / 60000);
+  return minutes >= 0 ? minutes : null;
+}
+
+function fmtMinutes(value) {
+  if (!Number.isFinite(Number(value))) return "—";
+  const m = Math.round(Number(value));
+  if (m < 60) return `${m} мин`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return rest ? `${h} ч ${rest} мин` : `${h} ч`;
+}
 function bool(value) { return value ? "да" : "нет"; }
 function num(value) { return Number(value || 0).toLocaleString("ru-RU"); }
 function avg(nums) { const v = nums.filter(x => Number.isFinite(Number(x))); return v.length ? (v.reduce((a,b)=>a+Number(b),0)/v.length).toFixed(2) : "—"; }
@@ -244,6 +273,34 @@ function App() {
     };
   }
 
+  function buildResponseAnalytics(items) {
+    const eligible = items.filter(x => canRespond(x));
+    const answered = eligible.filter(x => x.has_answer || x.response_origin || String(x.status || "").includes("published") || x.final_answer);
+    const reviewAnswered = answered.filter(x => x.kind === "review");
+    const questionAnswered = answered.filter(x => x.kind === "question");
+
+    function stats(rows, thresholdMinutes) {
+      const durations = rows.map(x => minutesBetween(x.created_at_marketplace || x.created_at, x.updated_at || x.created_at)).filter(x => x !== null);
+      const inSla = durations.filter(x => x <= thresholdMinutes).length;
+      const outSla = durations.filter(x => x > thresholdMinutes).length;
+      const avgMin = durations.length ? durations.reduce((a,b)=>a+b,0) / durations.length : null;
+      const p90 = durations.length ? durations.slice().sort((a,b)=>a-b)[Math.min(durations.length - 1, Math.floor(durations.length * 0.9))] : null;
+      return { total: rows.length, measured: durations.length, inSla, outSla, avgMin, p90 };
+    }
+
+    const reviewSla = stats(reviewAnswered, 60);
+    const questionSla = stats(questionAnswered, 15);
+    return {
+      answeredTotal: answered.length,
+      pending: eligible.filter(needsResponse).length,
+      noText: items.filter(isNoTextRating).length,
+      reviewSla,
+      questionSla,
+      reviewSlaPct: reviewSla.measured ? Math.round(reviewSla.inSla / reviewSla.measured * 100) : 0,
+      questionSlaPct: questionSla.measured ? Math.round(questionSla.inSla / questionSla.measured * 100) : 0,
+    };
+  }
+
   function buildInsights(items, productRows) {
     const categories = groupCount(items, x => x.ai_category).slice(0, 5);
     const riskyProducts = productRows.filter(x => Number(x.high_risk || 0) > 0 || Number(x.negative || 0) > 0).slice(0, 5);
@@ -321,6 +378,19 @@ function App() {
     } catch (e) {
       setMessage(`Ошибка карточки: ${e.message}`);
     }
+  }
+
+  function openProductCommunications(sku, targetKind = "reviews", rowPlatform = null) {
+    if (!sku) return;
+    const effectivePlatform = normPlatform(rowPlatform || platform);
+    if (effectivePlatform && effectivePlatform !== "ALL") setPlatform(effectivePlatform);
+    setPage("communications");
+    setKind(targetKind === "questions" ? "questions" : "reviews");
+    setState("all");
+    setSearch(String(sku));
+    setSelected(null);
+    setDraft("");
+    setMessage(targetKind === "questions" ? `Показаны вопросы по товару ${sku}` : `Показаны отзывы по товару ${sku}`);
   }
 
   function chooseItem(item) {
@@ -509,7 +579,7 @@ function App() {
   function renderCatalog() {
     return <Section title="Product Catalog Hub" subtitle="Единый каталог товаров WB/Ozon/ЯМ: рейтинг, отзывы, вопросы и ссылки на карточки" actions={<button className="primary" onClick={() => loadProducts(true, platform)}>Обновить каталог</button>}>
       <div className="cards wideCards"><Card title="Товаров" value={num(products.length)} /><Card title="С рейтингом" value={num(products.filter(x => x.avg_rating || x.latest_rating).length)} /><Card title="С отзывами" value={num(products.filter(x => x.reviews).length)} /><Card title="С вопросами" value={num(products.filter(x => x.questions).length)} /><Card title="High risk" value={num(products.filter(x => x.high_risk).length)} type="danger"/><Card title="С негативом" value={num(products.filter(x => x.negative).length)} type="warn"/></div>
-      <div className="panel"><table><thead><tr><th>SKU</th><th>Название</th><th>Площадки</th><th>Рейтинг</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th>Ссылка</th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, rowEffectivePlatform(row, platform))}>{row.sku || row.key}</button></td><td>{row.product_name || "—"}</td><td>{(row.platforms || []).join(", ")}</td><td>{row.avg_rating || row.latest_rating || "—"}</td><td>{row.reviews || row.feedbacks_count || 0}</td><td>{row.questions || 0}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>
+      <div className="panel"><table><thead><tr><th>SKU</th><th>Название</th><th>Площадки</th><th>Рейтинг</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th>Ссылка</th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, rowEffectivePlatform(row, platform))}>{row.sku || row.key}</button></td><td>{row.product_name || "—"}</td><td>{(row.platforms || []).join(", ")}</td><td>{row.avg_rating || row.latest_rating || "—"}</td><td>{Number(row.reviews || row.feedbacks_count || 0) ? <button className="linkBtn" onClick={() => openProductCommunications(row.sku || row.key, "reviews", rowEffectivePlatform(row, platform))}>{row.reviews || row.feedbacks_count || 0}</button> : 0}</td><td>{Number(row.questions || 0) ? <button className="linkBtn" onClick={() => openProductCommunications(row.sku || row.key, "questions", rowEffectivePlatform(row, platform))}>{row.questions || 0}</button> : 0}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>
     </Section>;
   }
 
@@ -517,7 +587,7 @@ function App() {
     return <Section title="Quality Hub" subtitle="Товары, жалобы, аномалии, AI Summary и рекомендации" actions={<button className="primary" onClick={() => loadProducts(true, platform)}>Обновить товары</button>}>
       <div className="cards wideCards"><Card title="Товаров" value={num(products.length)} /><Card title="High risk" value={num(products.filter(x => x.high_risk).length)} type="danger"/><Card title="С негативом" value={num(products.filter(x => x.negative).length)} type="warn"/><Card title="Основная тема" value={insights.categories[0]?.[0] || "—"}/></div>
       <div className="layoutTwo"><div className="panel"><h3>AI Summary по товарам</h3><p className="bigText">{insights.summary}</p>{insights.riskyProducts.map(x => <div className="recommendation clickable" key={x.key} onClick={() => openProduct(x.sku || x.key, rowEffectivePlatform(x, platform))}><b>{x.sku || x.key}</b><span>{x.recommendation}</span></div>)}</div><div className="panel"><h3>Тематики</h3>{insights.categories.length ? insights.categories.map(([k,v]) => <div className="metricRow" key={k}><span>{k}</span><b>{v}</b></div>) : <Empty/>}</div></div>
-      <div className="layoutTwo"><div className="panel"><h3>Список товаров</h3><table><thead><tr><th>Товар</th><th>Площадки</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th></th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, rowEffectivePlatform(row, platform))}>{row.sku || row.key}</button><br/><small>{row.product_name}</small></td><td>{(row.platforms || []).join(", ")}</td><td>{row.reviews}</td><td>{row.questions}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>{renderProductCard()}</div>
+      <div className="layoutTwo"><div className="panel"><h3>Список товаров</h3><table><thead><tr><th>Товар</th><th>Площадки</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th></th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, rowEffectivePlatform(row, platform))}>{row.sku || row.key}</button><br/><small>{row.product_name}</small></td><td>{(row.platforms || []).join(", ")}</td><td>{Number(row.reviews || 0) ? <button className="linkBtn" onClick={() => openProductCommunications(row.sku || row.key, "reviews", rowEffectivePlatform(row, platform))}>{row.reviews}</button> : 0}</td><td>{Number(row.questions || 0) ? <button className="linkBtn" onClick={() => openProductCommunications(row.sku || row.key, "questions", rowEffectivePlatform(row, platform))}>{row.questions}</button> : 0}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>{renderProductCard()}</div>
     </Section>;
   }
 
@@ -526,7 +596,7 @@ function App() {
     const s = productCard.summary || {};
     const cats = Object.entries(s.categories || {});
     return <div className="panel"><div className="detailhead"><div><h3>{productCard.sku}</h3><p className="meta">{productCard.product_name || "Товар"}</p></div>{productCard.product_url && <a className="buttonLike" href={productCard.product_url} target="_blank" rel="noreferrer">Открыть на маркетплейсе</a>}</div>
-      <div className="cards mini"><Card title="Отзывы" value={s.reviews_total || 0}/><Card title="Вопросы" value={s.questions_total || 0}/><Card title="High risk" value={s.high_risk || 0} type={s.high_risk ? "danger" : ""}/></div>
+      <div className="cards mini"><Card title="Отзывы" value={s.reviews_total || 0} onClick={() => openProductCommunications(productCard.sku, "reviews", productCard.platform || platform)}/><Card title="Вопросы" value={s.questions_total || 0} onClick={() => openProductCommunications(productCard.sku, "questions", productCard.platform || platform)}/><Card title="High risk" value={s.high_risk || 0} type={s.high_risk ? "danger" : ""}/></div>
       <h4>Тематики</h4>{cats.length ? cats.map(([k,v]) => <div className="metricRow" key={k}><span>{k}</span><b>{v}</b></div>) : <Empty/>}
       <h4>Последние отзывы</h4>{(productCard.reviews || []).slice(0,5).map(x => <div className="miniItem" key={`r-${x.id}`}><b>{x.rating ? `⭐ ${x.rating}` : "Отзыв"}</b><span>{x.text || "Без текста"}</span></div>)}
       <h4>Последние вопросы</h4>{(productCard.questions || []).slice(0,5).map(x => <div className="miniItem" key={`q-${x.id}`}><b>Вопрос</b><span>{x.text || "Без текста"}</span></div>)}
@@ -552,7 +622,7 @@ function App() {
       </div>
       <div className="sectionFilters"><div><label>Тип операции</label><select value={operationType} onChange={e => setOperationType(e.target.value)}><option value="all">Все</option>{Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></div><div className="grow"><label>Статусы</label><div className="tags"><Badge>Новые: {byStatus.new || 0}</Badge><Badge type="yellow">В работе: {byStatus.in_progress || 0}</Badge><Badge type="green">Закрыто: {byStatus.closed || 0}</Badge></div></div></div>
       {syncMessage && <div className="message soft">{syncMessage}</div>}
-      <div className="panel"><h3>Реестр операций</h3>{operations.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Тип</th><th>Документ</th><th>SKU</th><th>Склад</th><th>Кол-во</th><th>Сумма</th><th>Статус</th><th>Ответственный</th></tr></thead><tbody>{operations.map(x => <tr key={x.id}><td>{dt(x.occurred_at || x.created_at)}</td><td><PlatformBadge value={x.platform}/></td><td>{labels[x.operation_type] || x.operation_type}</td><td>{x.document_number || x.external_id}</td><td>{x.sku || "—"}</td><td>{x.warehouse || "—"}</td><td>{x.quantity ?? "—"}</td><td>{x.amount || "—"}</td><td><Badge type={x.status === "closed" ? "green" : x.status === "in_progress" ? "yellow" : ""}>{x.status}</Badge></td><td>{x.responsible || "—"}</td></tr>)}</tbody></table> : <Empty>Операции пока не загружены. Реестр готов, следующий шаг — подключение конкретных WB/Ozon API-адаптеров без демо-данных.</Empty>}</div>
+      <div className="panel"><h3>Реестр операций</h3>{operations.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Тип</th><th>Документ</th><th>SKU</th><th>Склад</th><th>Кол-во</th><th>Сумма</th><th>Статус</th><th>Ответственный</th></tr></thead><tbody>{operations.map(x => <tr key={x.id}><td>{dt(x.occurred_at || x.created_at)}</td><td><PlatformBadge value={x.platform}/></td><td>{labels[x.operation_type] || x.operation_type}</td><td>{x.document_number || x.external_id}</td><td>{x.sku || "—"}</td><td>{x.warehouse || "—"}</td><td>{x.quantity ?? "—"}</td><td>{x.amount || "—"}</td><td><Badge type={x.status === "closed" ? "green" : x.status === "in_progress" ? "yellow" : ""}>{x.status}</Badge></td><td>{x.responsible || "—"}</td></tr>)}</tbody></table> : <Empty>Данных пока нет. Нажми «Синхронизировать операции»: live adapter запросит доступные API WB/Ozon для возвратов и актов. Если метод недоступен по правам токена, ошибка появится в статусе без демо-данных.</Empty>}</div>
     </Section>;
   }
 
@@ -567,11 +637,18 @@ function App() {
   }
 
   function renderAnalytics() {
+    const response = buildResponseAnalytics(platformItems);
     const byDay = groupCount(platformItems, x => day(x.created_at_marketplace)).slice(0, 14);
+    const byWeek = groupCount(platformItems, x => week(x.created_at_marketplace)).slice(0, 12);
     const byMonth = groupCount(platformItems, x => month(x.created_at_marketplace)).slice(0, 12);
-    return <Section title="Аналитика" subtitle="Executive Dashboard, SLA и AI Insights" actions={<button className="primary" onClick={() => refreshAll(true)}>Обновить</button>}>
-      <div className="cards wideCards"><Card title="Все коммуникации" value={num(metrics.total)}/><Card title="SLA требует ответа" value={num(metrics.needs)} type={metrics.needs ? "warn" : ""}/><Card title="Риски" value={num(metrics.risks)} type={metrics.risks ? "danger" : ""}/><Card title="WB" value={num(allMetrics.wb)}/><Card title="Ozon" value={num(allMetrics.ozon)}/></div>
-      <div className="layoutTwo"><div className="panel"><h3>Динамика день к дню</h3><table><tbody>{byDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div><div className="panel"><h3>Динамика месяц к месяцу</h3><table><tbody>{byMonth.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div></div>
+    const reviewByDay = groupCount(platformItems.filter(x => x.kind === "review"), x => day(x.created_at_marketplace)).slice(0, 14);
+    const questionByDay = groupCount(platformItems.filter(x => x.kind === "question"), x => day(x.created_at_marketplace)).slice(0, 14);
+    return <Section title="Аналитика" subtitle="Executive Dashboard, SLA скорости ответа, динамика отзывов/вопросов и AI Insights" actions={<button className="primary" onClick={() => refreshAll(true)}>Обновить</button>}>
+      <div className="cards wideCards"><Card title="Все коммуникации" value={num(metrics.total)}/><Card title="Требуют ответа" value={num(metrics.needs)} type={metrics.needs ? "warn" : ""}/><Card title="Оценки без текста" value={num(metrics.noTextRatings)} /><Card title="Риски" value={num(metrics.risks)} type={metrics.risks ? "danger" : ""}/><Card title="WB" value={num(allMetrics.wb)}/><Card title="Ozon" value={num(allMetrics.ozon)}/></div>
+      <div className="panel"><h3>SLA скорости ответа</h3><div className="cards wideCards"><Card title="Отзывы ≤ 1 часа" value={num(response.reviewSla.inSla)} hint={`${response.reviewSlaPct}% из измеренных`} type={response.reviewSla.outSla ? "warn" : ""}/><Card title="Отзывы > 1 часа" value={num(response.reviewSla.outSla)} type={response.reviewSla.outSla ? "danger" : ""}/><Card title="Вопросы ≤ 15 минут" value={num(response.questionSla.inSla)} hint={`${response.questionSlaPct}% из измеренных`} type={response.questionSla.outSla ? "warn" : ""}/><Card title="Вопросы > 15 минут" value={num(response.questionSla.outSla)} type={response.questionSla.outSla ? "danger" : ""}/><Card title="Среднее время ответа" value={fmtMinutes(response.reviewSla.avgMin)} hint="по отзывам"/><Card title="P90 ответа" value={fmtMinutes(response.reviewSla.p90)} hint="по отзывам"/></div><p className="meta">Ozon-оценки без комментария исключены из SLA, AI и автопубликации. Если у старых записей нет точной даты публикации ответа, расчет использует дату последнего обновления записи в базе.</p></div>
+      <div className="layoutTwo"><div className="panel"><h3>Динамика день к дню</h3><table><tbody>{byDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div><div className="panel"><h3>Динамика неделя к неделе</h3><table><tbody>{byWeek.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div></div>
+      <div className="layoutTwo"><div className="panel"><h3>Отзывы по дням</h3><table><tbody>{reviewByDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div><div className="panel"><h3>Вопросы по дням</h3><table><tbody>{questionByDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div></div>
+      <div className="layoutTwo"><div className="panel"><h3>Динамика месяц к месяцу</h3><table><tbody>{byMonth.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div><div className="panel"><h3>Статус очереди</h3><div className="metricRow"><span>Готовые черновики</span><b>{num(metrics.drafts)}</b></div><div className="metricRow"><span>Требуют ответа</span><b>{num(response.pending)}</b></div><div className="metricRow"><span>Отвеченные / с ответом</span><b>{num(response.answeredTotal)}</b></div><div className="metricRow"><span>Без комментария</span><b>{num(response.noText)}</b></div></div></div>
       <div className="panel"><h3>История синхронизаций</h3>{renderSyncHistory()}</div>
     </Section>;
   }
