@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./style.css";
 
@@ -81,6 +81,22 @@ function avg(nums) { const v = nums.filter(x => Number.isFinite(Number(x))); ret
 function pretty(obj) { return typeof obj === "string" ? obj : JSON.stringify(obj, null, 2); }
 function normPlatform(value) { return String(value || "").trim().toUpperCase(); }
 
+function rowMatchesPlatform(row, selectedPlatform) {
+  const target = normPlatform(selectedPlatform);
+  if (!target || target === "ALL") return true;
+  const direct = normPlatform(row?.platform);
+  const platforms = Array.isArray(row?.platforms) ? row.platforms.map(normPlatform) : [];
+  return direct === target || platforms.includes(target);
+}
+
+function rowEffectivePlatform(row, selectedPlatform) {
+  const target = normPlatform(selectedPlatform);
+  if (target && target !== "ALL") return target;
+  if (row?.platform) return normPlatform(row.platform);
+  if (Array.isArray(row?.platforms) && row.platforms.length) return normPlatform(row.platforms[0]);
+  return target || "ALL";
+}
+
 function productUrl(item) {
   if (item?.product_url) return item.product_url;
   if (!item?.sku) return null;
@@ -151,6 +167,8 @@ function App() {
   const [operationsSummary, setOperationsSummary] = useState(null);
   const [operationType, setOperationType] = useState("all");
   const [roleRights, setRoleRights] = useState(loadSavedRights);
+  const refreshRequestSeq = useRef(0);
+  const productsRequestSeq = useRef(0);
 
   const rawItems = useMemo(() => [...reviews.map(x => ({ ...x, kind: "review" })), ...questions.map(x => ({ ...x, kind: "question" }))], [reviews, questions]);
   const platformItems = useMemo(() => platform === "ALL" ? rawItems : rawItems.filter(x => normPlatform(x.platform) === platform), [rawItems, platform]);
@@ -169,7 +187,16 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => { loadProducts(false); refreshAll(false); }, [platform, operationType]);
+  useEffect(() => {
+    setProducts([]);
+    setProductCard(null);
+    setSelected(null);
+    setDraft("");
+    setOperations([]);
+    setOperationsSummary(null);
+    loadProducts(false, platform);
+    refreshAll(false, platform, operationType);
+  }, [platform, operationType]);
 
   useEffect(() => {
     if (!selected) return;
@@ -230,7 +257,10 @@ function App() {
     return { categories, riskyProducts, summary, recs };
   }
 
-  async function refreshAll(show = true) {
+  async function refreshAll(show = true, platformOverride = platform, operationTypeOverride = operationType) {
+    const requestId = ++refreshRequestSeq.current;
+    const requestedPlatform = normPlatform(platformOverride || platform);
+    const requestedOperationType = operationTypeOverride || operationType;
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
@@ -241,9 +271,10 @@ function App() {
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
         api("/wb-booking/status").catch(() => null),
-        api(`/operations?platform=${platform}&operation_type=${operationType}&limit=500`).catch(() => ({ items: [] })),
-        api(`/operations/summary?platform=${platform}`).catch(() => null),
+        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=500`).catch(() => ({ items: [] })),
+        api(`/operations/summary?platform=${requestedPlatform}`).catch(() => null),
       ]);
+      if (requestId !== refreshRequestSeq.current) return;
       if (r.status === "fulfilled") setReviews(asList(r.value));
       if (q.status === "fulfilled") setQuestions(asList(q.value));
       if (d.status === "fulfilled") setDiagnostics(d.value);
@@ -262,12 +293,18 @@ function App() {
     }
   }
 
-  async function loadProducts(show = true) {
+  async function loadProducts(show = true, platformOverride = platform) {
+    const requestId = ++productsRequestSeq.current;
+    const requestedPlatform = normPlatform(platformOverride || platform);
+    if (show) setMessage("Обновляю каталог товаров…");
     try {
-      const data = await api(`/ops/product-summary?platform=${platform}&limit=500`);
-      setProducts(data.items || []);
+      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=500`);
+      if (requestId !== productsRequestSeq.current) return;
+      const rows = (data.items || []).filter(row => rowMatchesPlatform(row, requestedPlatform));
+      setProducts(rows);
+      if (show) setMessage("Каталог обновлен");
     } catch (e) {
-      if (show) setMessage(`Ошибка товаров: ${e.message}`);
+      if (requestId === productsRequestSeq.current && show) setMessage(`Ошибка товаров: ${e.message}`);
     }
   }
 
@@ -276,8 +313,9 @@ function App() {
     setPage("quality");
     setMessage("Открываю карточку товара…");
     try {
-      const effectivePlatform = rowPlatform || platform;
+      const effectivePlatform = normPlatform(rowPlatform || platform);
       const data = await api(`/ops/product/${encodeURIComponent(sku)}?platform=${effectivePlatform}`);
+      if (platform !== "ALL" && effectivePlatform !== normPlatform(platform)) return;
       setProductCard(data);
       setMessage("Карточка товара открыта");
     } catch (e) {
@@ -469,17 +507,17 @@ function App() {
   }
 
   function renderCatalog() {
-    return <Section title="Product Catalog Hub" subtitle="Единый каталог товаров WB/Ozon/ЯМ: рейтинг, отзывы, вопросы и ссылки на карточки" actions={<button className="primary" onClick={() => loadProducts(true)}>Обновить каталог</button>}>
+    return <Section title="Product Catalog Hub" subtitle="Единый каталог товаров WB/Ozon/ЯМ: рейтинг, отзывы, вопросы и ссылки на карточки" actions={<button className="primary" onClick={() => loadProducts(true, platform)}>Обновить каталог</button>}>
       <div className="cards wideCards"><Card title="Товаров" value={num(products.length)} /><Card title="С рейтингом" value={num(products.filter(x => x.avg_rating || x.latest_rating).length)} /><Card title="С отзывами" value={num(products.filter(x => x.reviews).length)} /><Card title="С вопросами" value={num(products.filter(x => x.questions).length)} /><Card title="High risk" value={num(products.filter(x => x.high_risk).length)} type="danger"/><Card title="С негативом" value={num(products.filter(x => x.negative).length)} type="warn"/></div>
-      <div className="panel"><table><thead><tr><th>SKU</th><th>Название</th><th>Площадки</th><th>Рейтинг</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th>Ссылка</th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, row.platforms?.[0])}>{row.sku || row.key}</button></td><td>{row.product_name || "—"}</td><td>{(row.platforms || []).join(", ")}</td><td>{row.avg_rating || row.latest_rating || "—"}</td><td>{row.reviews || row.feedbacks_count || 0}</td><td>{row.questions || 0}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>
+      <div className="panel"><table><thead><tr><th>SKU</th><th>Название</th><th>Площадки</th><th>Рейтинг</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th>Ссылка</th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, rowEffectivePlatform(row, platform))}>{row.sku || row.key}</button></td><td>{row.product_name || "—"}</td><td>{(row.platforms || []).join(", ")}</td><td>{row.avg_rating || row.latest_rating || "—"}</td><td>{row.reviews || row.feedbacks_count || 0}</td><td>{row.questions || 0}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>
     </Section>;
   }
 
   function renderQuality() {
-    return <Section title="Quality Hub" subtitle="Товары, жалобы, аномалии, AI Summary и рекомендации" actions={<button className="primary" onClick={() => loadProducts(true)}>Обновить товары</button>}>
+    return <Section title="Quality Hub" subtitle="Товары, жалобы, аномалии, AI Summary и рекомендации" actions={<button className="primary" onClick={() => loadProducts(true, platform)}>Обновить товары</button>}>
       <div className="cards wideCards"><Card title="Товаров" value={num(products.length)} /><Card title="High risk" value={num(products.filter(x => x.high_risk).length)} type="danger"/><Card title="С негативом" value={num(products.filter(x => x.negative).length)} type="warn"/><Card title="Основная тема" value={insights.categories[0]?.[0] || "—"}/></div>
-      <div className="layoutTwo"><div className="panel"><h3>AI Summary по товарам</h3><p className="bigText">{insights.summary}</p>{insights.riskyProducts.map(x => <div className="recommendation clickable" key={x.key} onClick={() => openProduct(x.sku || x.key, x.platforms?.[0])}><b>{x.sku || x.key}</b><span>{x.recommendation}</span></div>)}</div><div className="panel"><h3>Тематики</h3>{insights.categories.length ? insights.categories.map(([k,v]) => <div className="metricRow" key={k}><span>{k}</span><b>{v}</b></div>) : <Empty/>}</div></div>
-      <div className="layoutTwo"><div className="panel"><h3>Список товаров</h3><table><thead><tr><th>Товар</th><th>Площадки</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th></th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, row.platforms?.[0])}>{row.sku || row.key}</button><br/><small>{row.product_name}</small></td><td>{(row.platforms || []).join(", ")}</td><td>{row.reviews}</td><td>{row.questions}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>{renderProductCard()}</div>
+      <div className="layoutTwo"><div className="panel"><h3>AI Summary по товарам</h3><p className="bigText">{insights.summary}</p>{insights.riskyProducts.map(x => <div className="recommendation clickable" key={x.key} onClick={() => openProduct(x.sku || x.key, rowEffectivePlatform(x, platform))}><b>{x.sku || x.key}</b><span>{x.recommendation}</span></div>)}</div><div className="panel"><h3>Тематики</h3>{insights.categories.length ? insights.categories.map(([k,v]) => <div className="metricRow" key={k}><span>{k}</span><b>{v}</b></div>) : <Empty/>}</div></div>
+      <div className="layoutTwo"><div className="panel"><h3>Список товаров</h3><table><thead><tr><th>Товар</th><th>Площадки</th><th>Отзывы</th><th>Вопросы</th><th>Риск</th><th></th></tr></thead><tbody>{products.map(row => <tr key={row.key}><td><button className="linkBtn" onClick={() => openProduct(row.sku || row.key, rowEffectivePlatform(row, platform))}>{row.sku || row.key}</button><br/><small>{row.product_name}</small></td><td>{(row.platforms || []).join(", ")}</td><td>{row.reviews}</td><td>{row.questions}</td><td>{row.high_risk ? <Badge type="red">high</Badge> : row.negative ? <Badge type="yellow">attention</Badge> : <Badge type="green">ok</Badge>}</td><td>{row.product_url && <a href={row.product_url} target="_blank" rel="noreferrer">Открыть</a>}</td></tr>)}</tbody></table></div>{renderProductCard()}</div>
     </Section>;
   }
 
