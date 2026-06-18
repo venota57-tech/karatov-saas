@@ -68,8 +68,8 @@ def _serialize_item(x, kind: str):
 
 @router.get("/overview")
 def overview(db: Session = Depends(get_db)):
-    reviews = db.query(Review).order_by(Review.created_at_marketplace.desc().nullslast()).limit(2000).all()
-    questions = db.query(Question).order_by(Question.created_at_marketplace.desc().nullslast()).limit(2000).all()
+    reviews = db.query(Review).order_by(Review.created_at_marketplace.desc().nullslast()).all()
+    questions = db.query(Question).order_by(Question.created_at_marketplace.desc().nullslast()).all()
     items = [("review", r) for r in reviews] + [("question", q) for q in questions]
 
     by_platform = Counter((x.platform or "UNKNOWN") for _, x in items)
@@ -97,7 +97,7 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.get("/product-summary")
-def product_summary(platform: str | None = None, limit: int = 100, db: Session = Depends(get_db)):
+def product_summary(platform: str | None = None, db: Session = Depends(get_db)):
     q1 = db.query(Review)
     q2 = db.query(Question)
     if platform and platform.upper() != "ALL":
@@ -109,7 +109,7 @@ def product_summary(platform: str | None = None, limit: int = 100, db: Session =
     snap_q = db.query(RatingSnapshot)
     if platform and platform.upper() != "ALL":
         snap_q = snap_q.filter(RatingSnapshot.platform == platform.upper())
-    snapshots = snap_q.order_by(RatingSnapshot.created_at.desc()).limit(5000).all()
+    snapshots = snap_q.order_by(RatingSnapshot.created_at.desc()).all()
     grouped: dict[str, dict[str, Any]] = defaultdict(lambda: {
         "sku": None,
         "product_name": None,

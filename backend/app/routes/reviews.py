@@ -33,7 +33,6 @@ def list_reviews(
     category: str | None = None,
     risk: str | None = None,
     response_origin: str | None = None,
-    limit: int = 500,
     db: Session = Depends(get_db),
 ):
     q = db.query(Review)
@@ -65,7 +64,7 @@ def list_reviews(
         q = q.filter(Review.status.in_(["ready_to_review", "ready_to_publish", "answer_rejected_quality_gate", "publish_dry_run"]))
     elif answer_state == "auto_published":
         q = q.filter(Review.status.in_(["auto_published", "published"]))
-    return q.order_by(desc(Review.created_at_marketplace), desc(Review.created_at)).limit(max(limit, 1)).all()
+    return q.order_by(desc(Review.created_at_marketplace), desc(Review.created_at)).all()
 
 
 @router.post("/{review_id}/generate", response_model=ReviewOut)

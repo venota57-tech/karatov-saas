@@ -321,14 +321,14 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api("/reviews?limit=2000"),
-        api("/questions?limit=2000"),
+        api("/reviews"),
+        api("/questions"),
         api("/system/diagnostics").catch(() => api("/system/status")),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
         api("/wb-booking/status").catch(() => null),
-        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=500`).catch(() => ({ items: [] })),
+        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}`).catch(() => ({ items: [] })),
         api(`/operations/summary?platform=${requestedPlatform}`).catch(() => null),
       ]);
       if (requestId !== refreshRequestSeq.current) return;
@@ -355,7 +355,7 @@ function App() {
     const requestedPlatform = normPlatform(platformOverride || platform);
     if (show) setMessage("Обновляю каталог товаров…");
     try {
-      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=500`);
+      const data = await api(`/ops/product-summary?platform=${requestedPlatform}`);
       if (requestId !== productsRequestSeq.current) return;
       const rows = (data.items || []).filter(row => rowMatchesPlatform(row, requestedPlatform));
       setProducts(rows);
