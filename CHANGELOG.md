@@ -1,5 +1,17 @@
 # KARATOV CX Hub — Changelog
 
+## Release 1.0 RC1.2 — technical patch
+
+### Исправлено
+
+- Убран глобальный WB 429 circuit breaker из WB-клиента.
+- Сохранен общий WB request gate, чтобы не было параллельных запросов.
+- 429 WB теперь возвращается как ошибка текущего запроса и должен обрабатываться scheduler как cooldown конкретного блока.
+- Ozon cursor больше не удаляется автоматически после достижения конца диапазона.
+- В Ozon result добавлены cursor_key, start_last_id, finish_last_id и end_reached.
+- Ozon auto loop теперь всегда заполняет last_finished_at при успехе и ошибке.
+
+
 ## Release 1.0 RC1.2
 
 Тип релиза: Stabilization Release.

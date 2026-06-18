@@ -110,7 +110,7 @@ async def _sync_ozon_reviews_paginated(db: Session, block: str, *, answered: boo
     pages = max(1, int(getattr(settings, 'ozon_sync_pages_per_block_run', 5)))
     cursor_key = f'{block}:last_id'
     last_id = _ozon_status.setdefault('cursors', {}).get(cursor_key)
-    result = {'platform': 'OZON', 'block': block, 'created': 0, 'updated': 0, 'received': 0, 'no_text_reviews': 0, 'pages': 0, 'diagnostics': {'pages': []}}
+    result = {'platform': 'OZON', 'block': block, 'created': 0, 'updated': 0, 'received': 0, 'no_text_reviews': 0, 'pages': 0, 'cursor_key': cursor_key, 'start_last_id': last_id, 'diagnostics': {'pages': []}}
     for _ in range(pages):
         if answered:
             items, diag = await oz.get_reviews_answered_page(limit, last_id)
@@ -135,9 +135,10 @@ async def _sync_ozon_reviews_paginated(db: Session, block: str, *, answered: boo
         if last_id:
             _ozon_status['cursors'][cursor_key] = last_id
         if not diag.get('has_next') or not items:
-            # Начинаем следующий цикл сначала, чтобы снова поймать свежие записи.
-            _ozon_status['cursors'].pop(cursor_key, None)
+            result['diagnostics']['end_reached'] = True
+            result['diagnostics']['last_saved_cursor'] = _ozon_status['cursors'].get(cursor_key)
             break
+    result['finish_last_id'] = _ozon_status['cursors'].get(cursor_key)
     result['message'] = f'Ozon блок {block}: получено {result["received"]}, новых {result["created"]}, обновлено {result["updated"]}, без текста {result["no_text_reviews"]}'
     return result
 
@@ -228,12 +229,15 @@ async def ozon_auto_sync_loop() -> None:
                         _ozon_status['last_started_at'] = _now_iso()
                         res = await sync_ozon_next_block(db)
                         block = res.get('block')
-                        _ozon_status['blocks'][block] = {'status': 'success', 'last_result': res, 'last_success_at': _now_iso(), 'last_finished_at': _now_iso()}
+                        finished_at = _now_iso()
+                        _ozon_status['blocks'][block] = {'status': 'success', 'last_result': res, 'last_success_at': finished_at, 'last_finished_at': finished_at}
                         _ozon_status['last_result'] = {'platform': 'OZON', 'auto': True, 'result': res}
-                        _ozon_status['last_success_at'] = _now_iso()
+                        _ozon_status['last_success_at'] = finished_at
                         _ozon_status['last_error'] = None
                     finally:
+                        _ozon_status['last_finished_at'] = _now_iso()
                         db.close()
         except Exception as exc:
             _ozon_status['last_error'] = f'auto_ozon: {exc}'
+            _ozon_status['last_finished_at'] = _now_iso()
         await asyncio.sleep(max(60, int(settings.ozon_auto_sync_interval_seconds)))

@@ -9,16 +9,11 @@ import httpx
 
 WB_BASE = 'https://feedbacks-api.wildberries.ru'
 
-# v3.8: a single in-process WB request gate.
-# All WB clients use it, so sync, backfill and publishing cannot hammer WB in parallel.
+# RC1.2: a single in-process WB request gate without global 429 circuit breaker.
+# The gate prevents parallel WB requests, while 429 cooldown is handled per scheduler block.
 _WB_GATE_LOCK = asyncio.Lock()
 _WB_NEXT_ALLOWED_AT = 0.0
-_WB_CIRCUIT_UNTIL = 0.0
 _WB_ADAPTIVE_INTERVAL_SECONDS = 0.0
-
-class WbRateLimitCircuitOpen(RuntimeError):
-    pass
-
 
 class WildberriesClient:
     def __init__(
@@ -72,11 +67,11 @@ class WildberriesClient:
 
                     if response.status_code == 429:
                         retry_after = response.headers.get('Retry-After')
-                        await self._open_wb_circuit(retry_after)
-                        delay = self._parse_retry_after(retry_after) or self._default_circuit_breaker_seconds()
-                        last_error = f'WB вернул 429 Too Many Requests. Включен общий WB cooldown на {delay:.0f} сек.; остальные WB-запросы приложения остановлены, чтобы не добивать лимит.'
-                        # Do NOT retry in a tight loop after 429. We stop this pass and let the
-                        # scheduler try again only after the global circuit breaker expires.
+                        delay = self._parse_retry_after(retry_after)
+                        if delay:
+                            global _WB_ADAPTIVE_INTERVAL_SECONDS
+                            _WB_ADAPTIVE_INTERVAL_SECONDS = min(max(delay, _WB_ADAPTIVE_INTERVAL_SECONDS, 30.0), 300.0)
+                        last_error = 'WB вернул 429 Too Many Requests. Cooldown должен применяться только к текущему WB-блоку.'
                         raise RuntimeError(last_error)
 
                     if 500 <= response.status_code < 600 and attempt < self.max_retries:
@@ -93,8 +88,6 @@ class WildberriesClient:
                     await self._relax_wb_adaptive_interval()
                     return parsed
 
-                except WbRateLimitCircuitOpen:
-                    raise
                 except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
                     last_error = f'Сетевая ошибка WB API: {type(exc).__name__}'
                     if attempt < self.max_retries:
@@ -118,21 +111,10 @@ class WildberriesClient:
             configured = 12.0
         return max(float(self.request_pause_seconds), configured, 1.0)
 
-    def _default_circuit_breaker_seconds(self) -> float:
-        try:
-            from ..config import settings  # type: ignore
-            configured = float(getattr(settings, 'wb_global_429_circuit_breaker_seconds', 3600))
-        except Exception:
-            configured = 3600.0
-        return max(configured, 60.0)
-
     async def _wait_wb_global_gate(self) -> None:
-        global _WB_NEXT_ALLOWED_AT, _WB_CIRCUIT_UNTIL, _WB_ADAPTIVE_INTERVAL_SECONDS
+        global _WB_NEXT_ALLOWED_AT, _WB_ADAPTIVE_INTERVAL_SECONDS
         async with _WB_GATE_LOCK:
             now = time.monotonic()
-            if _WB_CIRCUIT_UNTIL > now:
-                wait_left = _WB_CIRCUIT_UNTIL - now
-                raise WbRateLimitCircuitOpen(f'WB global limiter: запросы на паузе еще {wait_left:.0f} сек. после 429.')
             wait_for = max(0.0, _WB_NEXT_ALLOWED_AT - now)
             if wait_for > 0:
                 await asyncio.sleep(wait_for)
@@ -142,21 +124,6 @@ class WildberriesClient:
     async def _mark_wb_request_sent(self) -> None:
         # Reserved hook: _wait_wb_global_gate already moves next_allowed before sending.
         return None
-
-    async def _open_wb_circuit(self, retry_after: str | None) -> None:
-        global _WB_NEXT_ALLOWED_AT, _WB_CIRCUIT_UNTIL, _WB_ADAPTIVE_INTERVAL_SECONDS
-        parsed_retry = self._parse_retry_after(retry_after)
-        default_delay = self._default_circuit_breaker_seconds()
-        # WB can return a long Retry-After. For CX Hub we keep the in-app circuit bounded
-        # by WB_GLOBAL_429_CIRCUIT_BREAKER_SECONDS so one strict endpoint does not freeze
-        # the entire marketplace workspace for an hour. The per-block scheduler still pauses
-        # the failed block separately.
-        delay = default_delay if parsed_retry is None else min(max(parsed_retry, 60.0), default_delay)
-        async with _WB_GATE_LOCK:
-            now = time.monotonic()
-            _WB_CIRCUIT_UNTIL = max(_WB_CIRCUIT_UNTIL, now + delay)
-            _WB_ADAPTIVE_INTERVAL_SECONDS = min(max(self._configured_min_interval_seconds() * 2, _WB_ADAPTIVE_INTERVAL_SECONDS * 2, 30.0), 300.0)
-            _WB_NEXT_ALLOWED_AT = max(_WB_NEXT_ALLOWED_AT, _WB_CIRCUIT_UNTIL)
 
     async def _relax_wb_adaptive_interval(self) -> None:
         global _WB_ADAPTIVE_INTERVAL_SECONDS
