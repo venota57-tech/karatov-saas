@@ -328,7 +328,7 @@ function App() {
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
         api("/wb-booking/status").catch(() => null),
-        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}`).catch(() => ({ items: [] })),
+        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&offset=0&limit=500`).catch(() => ({ items: [] })),
         api(`/operations/summary?platform=${requestedPlatform}`).catch(() => null),
       ]);
       if (requestId !== refreshRequestSeq.current) return;

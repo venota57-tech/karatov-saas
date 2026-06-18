@@ -127,6 +127,8 @@ def run_lightweight_migrations():
         "quantity": int_type,
         "reason": "TEXT",
         "status": "VARCHAR(64) DEFAULT 'new'",
+        "source_status": "VARCHAR(128)",
+        "workflow_status": "VARCHAR(64) DEFAULT 'new'",
         "responsible": "VARCHAR(128)",
         "comment": "TEXT",
         "raw": json_type,
