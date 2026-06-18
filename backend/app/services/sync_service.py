@@ -1285,19 +1285,19 @@ async def _run_wb_block_safely_v36(block_name: str, source: str) -> dict[str, An
 
 
 def _wb_sweep_blocks_v36() -> list[str]:
-    # Productive order: feedback endpoints first, question endpoints last.
-    # In this seller account WB questions sometimes trigger 429. Putting questions at
-    # the end lets reviews/answered/archive move forward before a strict questions
-    # endpoint starts its own cooldown.
+    # RC1.2.1: operational queues must run before heavy historical backfill.
+    # If answered/archive feedback endpoints hit 429 first, questions never get a chance.
+    # Order is now:
+    # 1) current unanswered feedbacks
+    # 2) current unanswered questions
+    # 3) answered feedbacks
+    # 4) answered questions
+    # 5) archive feedbacks
     blocks: list[str] = []
     if settings.wb_operational_sync_enabled:
-        blocks.append('feedbacks_unanswered')
+        blocks.extend(['feedbacks_unanswered', 'questions_unanswered'])
     if settings.wb_backfill_sync_enabled or getattr(settings, 'wb_archive_backfill_always_enabled', True):
-        blocks.extend(['feedbacks_answered', 'feedbacks_archive'])
-    if settings.wb_operational_sync_enabled:
-        blocks.append('questions_unanswered')
-    if settings.wb_backfill_sync_enabled or getattr(settings, 'wb_archive_backfill_always_enabled', True):
-        blocks.append('questions_answered')
+        blocks.extend(['feedbacks_answered', 'questions_answered', 'feedbacks_archive'])
     if not blocks:
         blocks = _enabled_blocks()
     seen = set()
