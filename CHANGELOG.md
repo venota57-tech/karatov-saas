@@ -1,3 +1,12 @@
+
+## Release 1.0 RC1.3.2
+
+### Исправлено
+
+- Убран backend hard cap 1000 для `/reviews`.
+- Control Tower теперь берет счетчики отзывов, вопросов и очереди ответа из `/summary`, а не из длины загруженного массива.
+- AI Summary больше не должен показывать искусственный потолок 1000 отзывов / 1135 коммуникаций.
+
 \n## Release 1.0 RC1.2.1\n\n### Исправлено\n\n- Изменен порядок WB sweep: questions_unanswered теперь запускается сразу после feedbacks_unanswered.\n- Тяжелые исторические блоки feedbacks_answered, questions_answered и feedbacks_archive перенесены после операционных очередей.\n- Это нужно, чтобы WB Questions не оставались never_run из-за 429 на архивных endpoint.\n\n# KARATOV CX Hub — Changelog
 
 ## Release 1.0 RC1.2 — technical patch
