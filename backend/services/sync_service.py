@@ -1395,3 +1395,80 @@ def get_sync_status() -> dict:
         },
     }
     return dict(_sync_status)
+
+# =========================
+# RC1: WB Recovery hardening
+# =========================
+# The product must sync all WB blocks regardless of the old WB_SYNC_MODE value.
+# UI filters decide what is operational debt; sync must keep the full local mirror.
+def _enabled_blocks() -> list[str]:
+    return list(WB_SYNC_BLOCKS)
+
+
+def _wb_sweep_blocks_v36() -> list[str]:
+    return list(WB_SYNC_BLOCKS)
+
+
+async def wb_questions_probe(db: Session | None = None) -> dict[str, Any]:
+    """Direct diagnostic probe for WB questions without touching UI assumptions."""
+    client = _make_client()
+    out: dict[str, Any] = {"platform": "WB", "probe": "questions", "blocks": {}}
+    for answered in [False, True]:
+        label = "questions_answered" if answered else "questions_unanswered"
+        try:
+            items = await client.get_questions(is_answered=answered, take=max(1, int(settings.wb_sync_take)), skip=0)
+            out["blocks"][label] = {
+                "status": "success",
+                "received": len(items),
+                "sample_keys": sorted(list(items[0].keys())) if items else [],
+                "sample_id": str(items[0].get("id") or items[0].get("questionId") or "") if items else None,
+            }
+        except Exception as exc:
+            out["blocks"][label] = {"status": "failed", "error": str(exc), "received": 0}
+        await asyncio.sleep(max(1, int(settings.wb_request_pause_seconds)))
+    try:
+        out["count_unanswered"] = await client.get_questions_unanswered_count()
+    except Exception as exc:
+        out["count_unanswered"] = {"error": str(exc)}
+    try:
+        out["count_total"] = await client.get_questions_count()
+    except Exception as exc:
+        out["count_total"] = {"error": str(exc)}
+    return out
+
+
+def get_sync_status() -> dict:
+    _sync_status['auto_sync_enabled'] = settings.wb_auto_sync_enabled
+    _sync_status['auto_sync_strategy'] = 'rc1_wb_recovery_sweep_all_blocks'
+    _sync_status['interval_seconds'] = settings.wb_auto_sync_interval_seconds
+    _sync_status['initial_delay_seconds'] = settings.wb_auto_sync_initial_delay_seconds
+    _sync_status['sync_mode'] = 'all_blocks_for_local_mirror'
+    _sync_status['max_runtime_seconds'] = settings.wb_sync_max_runtime_seconds
+    _sync_status['request_timeout_seconds'] = settings.wb_request_timeout_seconds
+    _sync_status['diagnostic_counts_enabled'] = settings.wb_diagnostic_counts_enabled
+    _sync_status['feedback_count_diagnostics_enabled'] = settings.wb_feedback_count_diagnostics_enabled
+    _sync_status['rate_limit_cooldown_seconds'] = settings.wb_rate_limit_cooldown_seconds
+    _sync_status['blocks_state'] = _block_state
+    _sync_status['enabled_blocks'] = list(WB_SYNC_BLOCKS)
+    _sync_status['sweep_blocks'] = list(WB_SYNC_BLOCKS)
+    _sync_status['auto_schedules'] = {
+        'sweep': {
+            'enabled': bool(settings.wb_api_token) and settings.wb_auto_sync_enabled,
+            'blocks': list(WB_SYNC_BLOCKS),
+            'interval_seconds': settings.wb_auto_sync_interval_seconds,
+            'initial_delay_seconds': settings.wb_auto_sync_initial_delay_seconds,
+            'purpose': 'RC1: зеркалим все отзывы и вопросы WB: свежие, отвеченные и архивные; режим WB_SYNC_MODE больше не обрезает локальное зеркало',
+        },
+        'backfill': {
+            'enabled': bool(settings.wb_api_token) and (settings.wb_backfill_sync_enabled or getattr(settings, 'wb_archive_backfill_always_enabled', True)),
+            'blocks': WB_BACKFILL_BLOCKS,
+            'pages_per_block_run': settings.wb_sync_pages_per_block_run,
+            'max_pages': getattr(settings, 'wb_sync_max_pages', 100000),
+            'purpose': 'перманентная дозагрузка архива и отвеченных вопросов/отзывов по страницам до конца доступных данных',
+        },
+    }
+    _sync_status['health_hint'] = {
+        'wb_questions_zero': (_block_state.get('questions_unanswered', {}).get('last_received') in (None, 0) and _block_state.get('questions_answered', {}).get('last_received') in (None, 0)),
+        'next_action': 'Если WB questions остаются 0, вызови /marketplace-health/wb/questions-probe — он покажет, что реально возвращает WB Questions API.'
+    }
+    return dict(_sync_status)
