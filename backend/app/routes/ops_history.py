@@ -131,13 +131,13 @@ def product_summary(platform: str | None = None, db: Session = Depends(get_db)):
             func.count(Review.id).label("reviews"),
             func.avg(Review.rating).label("avg_rating"),
             func.sum(case((Review.rating <= 3, 1), else_=0)).label("negative"),
-            func.max(Review.product_url).label("product_url"),
         )
         .group_by(Review.platform, Review.sku, Review.product_name)
         .all()
     )
 
-    for platform_value, sku, product_name, reviews, avg_rating, negative, product_url in review_rows:
+    for platform_value, sku, product_name, reviews, avg_rating, negative in review_rows:
+        product_url = None
         k = key(platform_value, sku, product_name)
         g = groups.setdefault(k, {
             "key": k,
@@ -169,13 +169,13 @@ def product_summary(platform: str | None = None, db: Session = Depends(get_db)):
             Question.sku,
             Question.product_name,
             func.count(Question.id).label("questions"),
-            func.max(Question.product_url).label("product_url"),
         )
         .group_by(Question.platform, Question.sku, Question.product_name)
         .all()
     )
 
-    for platform_value, sku, product_name, questions, product_url in question_rows:
+    for platform_value, sku, product_name, questions in question_rows:
+        product_url = None
         k = key(platform_value, sku, product_name)
         g = groups.setdefault(k, {
             "key": k,
