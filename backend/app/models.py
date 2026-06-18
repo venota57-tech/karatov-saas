@@ -73,7 +73,7 @@ class Review(Base):
     cons: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at_marketplace: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    answered_at = Column(DateTime, nullable=True)
+    answered_at = mapped_column(DateTime, nullable=True)
     has_answer: Mapped[bool] = mapped_column(Boolean, default=False)
     raw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
@@ -116,7 +116,7 @@ class Question(Base):
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
     client_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at_marketplace: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    answered_at = Column(DateTime, nullable=True)
+    answered_at = mapped_column(DateTime, nullable=True)
     has_answer: Mapped[bool] = mapped_column(Boolean, default=False)
     raw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 

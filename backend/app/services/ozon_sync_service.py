@@ -203,7 +203,7 @@ def get_ozon_status() -> dict[str, Any]:
     _ozon_status['has_client_id'] = bool(settings.ozon_client_id)
     _ozon_status['has_api_key'] = bool(settings.ozon_api_key)
     _ozon_status['sync_take'] = settings.ozon_sync_take
-    _ozon_status['pages_per_block_run'] = getattr(settings, 'ozon_sync_pages_per_block_run', 5)
+    _ozon_status['pages_per_block_run'] = getattr(settings, 'ozon_sync_pages_per_block_run', 100)
     return dict(_ozon_status)
 
 

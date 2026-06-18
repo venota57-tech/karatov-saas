@@ -9,13 +9,16 @@ ANSWER_KEYS = {
     "supplierAnswer", "supplier_answer",
     "response", "responseText", "response_text",
     "commentAnswer", "officialAnswer", "publishedAnswer",
-    "textAnswer", "answer_text_html"
+    "textAnswer", "answer_text_html",
+    "answer_text_plain", "answerTextPlain"
 }
 
 ANSWER_DATE_KEYS = {
     "answered_at", "answerDate", "answer_date", "answeredAt",
-    "responseDate", "response_date", "updatedAt", "updated_at",
-    "answerCreatedAt", "answer_created_at"
+    "responseDate", "response_date",
+    "answerCreatedAt", "answer_created_at",
+    "answerUpdatedAt", "answer_updated_at",
+    "updatedAt", "updated_at"
 }
 
 def walk_value(obj: Any, keys: set[str]) -> Any:
