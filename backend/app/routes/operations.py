@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import get_db, run_lightweight_migrations
 from ..models import MarketplaceOperation
 
 router = APIRouter(prefix='/operations', tags=['operations'])
@@ -33,9 +33,7 @@ def _serialize(row: MarketplaceOperation) -> dict[str, Any]:
         'amount': row.amount,
         'quantity': row.quantity,
         'reason': row.reason,
-        'status': getattr(row, 'workflow_status', None) or row.status,
-        'source_status': getattr(row, 'source_status', None),
-        'workflow_status': getattr(row, 'workflow_status', None) or row.status,
+        'status': row.status,
         'responsible': row.responsible,
         'comment': row.comment,
         'occurred_at': row.occurred_at.isoformat() if row.occurred_at else None,
@@ -45,45 +43,21 @@ def _serialize(row: MarketplaceOperation) -> dict[str, Any]:
     }
 
 @router.get('')
-def list_operations(
-    platform: str = 'ALL',
-    operation_type: str = 'all',
-    status: str = 'all',
-    offset: int = 0,
-    limit: int = 500,
-    db: Session = Depends(get_db),
-):
+def list_operations(platform: str = 'ALL', operation_type: str = 'all', status: str = 'all', db: Session = Depends(get_db)):
+    run_lightweight_migrations()
     q = db.query(MarketplaceOperation)
     if platform and platform.upper() != 'ALL':
         q = q.filter(MarketplaceOperation.platform == platform.upper())
     if operation_type and operation_type != 'all':
         q = q.filter(MarketplaceOperation.operation_type == operation_type)
     if status and status != 'all':
-        q = q.filter(
-            (MarketplaceOperation.status == status) |
-            (getattr(MarketplaceOperation, 'workflow_status', MarketplaceOperation.status) == status)
-        )
-
-    total = q.count()
-    safe_limit = min(max(int(limit or 500), 1), 1000)
-    safe_offset = max(int(offset or 0), 0)
-
-    rows = (
-        q.order_by(MarketplaceOperation.occurred_at.desc().nullslast(), MarketplaceOperation.id.desc())
-        .offset(safe_offset)
-        .limit(safe_limit)
-        .all()
-    )
-
-    return {
-        'total': total,
-        'offset': safe_offset,
-        'limit': safe_limit,
-        'items': [_serialize(r) for r in rows],
-    }
+        q = q.filter(MarketplaceOperation.status == status)
+    rows = q.order_by(MarketplaceOperation.occurred_at.desc().nullslast(), MarketplaceOperation.id.desc()).all()
+    return {'items': [_serialize(r) for r in rows]}
 
 @router.get('/summary')
 def summary(platform: str = 'ALL', db: Session = Depends(get_db)):
+    run_lightweight_migrations()
     q = db.query(MarketplaceOperation)
     if platform and platform.upper() != 'ALL':
         q = q.filter(MarketplaceOperation.platform == platform.upper())
@@ -116,5 +90,6 @@ def update_operation(operation_id: int, payload: OperationUpdate, db: Session = 
 
 @router.post('/sync')
 async def sync_operations(platform: str = 'ALL', db: Session = Depends(get_db)):
+    run_lightweight_migrations()
     from ..services.operations_sync_service import OperationsSyncService
     return await OperationsSyncService(db).sync(platform=platform)
