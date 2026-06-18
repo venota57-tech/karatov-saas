@@ -194,7 +194,6 @@ function App() {
   const [booking, setBooking] = useState(null);
   const [operations, setOperations] = useState([]);
   const [operationsSummary, setOperationsSummary] = useState(null);
-  const [cxSummary, setCxSummary] = useState(null);
   const [operationType, setOperationType] = useState("all");
   const [roleRights, setRoleRights] = useState(loadSavedRights);
   const refreshRequestSeq = useRef(0);
@@ -207,29 +206,9 @@ function App() {
   const visibleQuestions = visibleItems.filter(x => x.kind === "question");
   const activeList = kind === "reviews" ? visibleReviews : visibleQuestions;
 
-  const metrics = useMemo(() => {
-    const local = buildMetrics(platformItems);
-    if (!cxSummary) return local;
-    return {
-      ...local,
-      reviews: Number(cxSummary.total_reviews ?? local.reviews),
-      questions: Number(cxSummary.total_questions ?? local.questions),
-      needs: Number((cxSummary.unanswered_reviews ?? 0) + (cxSummary.unanswered_questions ?? 0)),
-    };
-  }, [platformItems, cxSummary]);
-
+  const metrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
   const allMetrics = useMemo(() => buildMetrics(rawItems), [rawItems]);
-
-  const insights = useMemo(() => {
-    const local = buildInsights(platformItems, products);
-    if (!cxSummary) return local;
-    const total = Number(cxSummary.total_reviews || 0) + Number(cxSummary.total_questions || 0);
-    const needs = Number(cxSummary.unanswered_reviews || 0) + Number(cxSummary.unanswered_questions || 0);
-    return {
-      ...local,
-      summary: `По выбранному контуру собрано ${total} коммуникаций. Требуют ответа: ${needs}. Основная тема: ${local.categories[0]?.[0] || "нет выраженной темы"}. Высоких рисков: ${local.riskyProducts.length}.`,
-    };
-  }, [platformItems, products, cxSummary]);
+  const insights = useMemo(() => buildInsights(platformItems, products), [platformItems, products]);
 
   useEffect(() => {
     refreshAll(false);
@@ -341,10 +320,9 @@ function App() {
     const requestedOperationType = operationTypeOverride || operationType;
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
-      const [r, q, summaryData, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
+      const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
         api("/reviews?limit=2000"),
         api("/questions?limit=2000"),
-        api(`/summary?platform=${requestedPlatform}`).catch(() => null),
         api("/system/diagnostics").catch(() => api("/system/status")),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
@@ -356,7 +334,6 @@ function App() {
       if (requestId !== refreshRequestSeq.current) return;
       if (r.status === "fulfilled") setReviews(asList(r.value));
       if (q.status === "fulfilled") setQuestions(asList(q.value));
-      if (summaryData.status === "fulfilled") setCxSummary(summaryData.value);
       if (d.status === "fulfilled") setDiagnostics(d.value);
       if (s.status === "fulfilled") setSyncHistory(s.value);
       if (p.status === "fulfilled") setPublishHistory(p.value);
