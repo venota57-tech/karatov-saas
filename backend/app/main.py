@@ -45,16 +45,15 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     tasks = []
 
-    # RC1.5 emergency: do not block Render port binding on lightweight migrations.
-    # Migrations can hang on PostgreSQL locks; the app must open the port first.
     async def _run_migrations_background():
         try:
-            await asyncio.wait_for(asyncio.to_thread(run_lightweight_migrations), timeout=25)
+            await asyncio.wait_for(asyncio.to_thread(run_lightweight_migrations), timeout=20)
             print("[startup] DB migrations completed")
         except Exception as e:
             print(f"[startup] DB migration skipped/error: {e}")
 
     tasks.append(asyncio.create_task(_run_migrations_background()))
+    print("[startup] DB migrations scheduled in background")
 
     if wb_auto_sync_loop and (getattr(settings, "wb_api_token", "") or getattr(settings, "wb_api_key", "")):
         tasks.append(asyncio.create_task(wb_auto_sync_loop()))
