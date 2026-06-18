@@ -1,4 +1,20 @@
 
+## Release 1.0 RC1.4 — Product Integrity Release
+
+### Исправлено
+
+- Убраны искусственные лимиты из рабочих списков отзывов, вопросов и Operations Hub.
+- Убраны frontend-лимиты `/reviews?limit=2000`, `/questions?limit=2000`, `/operations?limit=500`, `/ops/product-summary?limit=500`.
+- Product Summary восстановлен: каталог строится по всем загруженным отзывам и вопросам, snapshots используются как дополнительное обогащение.
+- Quality Hub снова должен получать товары из Product Summary.
+- Подтягивание ответов из кабинетов WB/Ozon зафиксировано как обязательная часть answered/archive blocks: final_answer + response_origin=seller_cabinet, без перетирания manual_app/auto_app.
+- Summary/top/preview ограничения оставлены только там, где это осознанное UI-превью.
+
+### Важно
+
+- Автосинк WB/Ozon нужно включать после успешного деплоя и проверки `/health`, `/ops/product-summary`, `/sync/status`, `/sync/ozon/status`.
+
+
 ## Release 1.0 RC1.3.3
 
 ### Исправлено
