@@ -6,6 +6,7 @@ from typing import Any, Callable, Awaitable
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from app.services.marketplace_truth_service import apply_marketplace_answer
 from ..database import SessionLocal
 from ..models import Review, Question, RatingSnapshot
 from ..marketplace_clients.wb import WildberriesClient, normalize_feedback, normalize_question
@@ -241,6 +242,7 @@ async def _import_reviews_block(db: Session, label: str, source: str, fetcher: C
         block['received'] = len(items)
         for item in items:
             data = normalize_feedback(item, source=source)
+            data = apply_marketplace_answer(data, item, force_answered=bool(has_answer_override))
             if not data.get('external_id') or data.get('external_id') == 'None':
                 continue
             if has_answer_override is not None:
@@ -281,6 +283,7 @@ async def _import_questions_block(db: Session, label: str, fetcher: Callable[[in
         block['received'] = len(items)
         for item in items:
             data = normalize_question(item)
+            data = apply_marketplace_answer(data, item, force_answered=bool(has_answer_override))
             if not data.get('external_id') or data.get('external_id') == 'None':
                 continue
             if has_answer_override is not None:

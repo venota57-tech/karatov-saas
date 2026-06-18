@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from app.services.marketplace_truth_service import apply_marketplace_answer
 from ..models import Review, Question
 from ..database import SessionLocal
 from ..ai.rule_based import classify_review, classify_question
@@ -107,7 +108,7 @@ def _upsert_question(db: Session, data: dict[str, Any]) -> str:
 async def _sync_ozon_reviews_paginated(db: Session, block: str, *, answered: bool) -> dict[str, Any]:
     oz = _client()
     limit = max(1, int(settings.ozon_sync_take))
-    pages = max(1, int(getattr(settings, 'ozon_sync_pages_per_block_run', 5)))
+    pages = max(1, int(getattr(settings, 'ozon_sync_pages_per_block_run', 100)))
     cursor_key = f'{block}:last_id'
     last_id = _ozon_status.setdefault('cursors', {}).get(cursor_key)
     result = {'platform': 'OZON', 'block': block, 'created': 0, 'updated': 0, 'received': 0, 'no_text_reviews': 0, 'pages': 0, 'cursor_key': cursor_key, 'start_last_id': last_id, 'diagnostics': {'pages': []}}
@@ -127,6 +128,7 @@ async def _sync_ozon_reviews_paginated(db: Session, block: str, *, answered: boo
         result['diagnostics']['pages'].append(diag)
         for item in items:
             data = normalize_ozon_review(item, source_status=source_status, operational_status=operational_status, has_answer=has_answer)
+            data = apply_marketplace_answer(data, item, force_answered=bool(has_answer))
             if data.get('operational_status') == 'no_text_rating':
                 result['no_text_reviews'] += 1
             r = _upsert_review(db, data)
@@ -167,6 +169,7 @@ async def sync_ozon_block(db: Session, block: str) -> dict[str, Any]:
         result['received'] = len(items)
         for item in items:
             data = normalize_ozon_question(item, source_status='ozon_answered', operational_status='analytics_only', has_answer=True)
+            data = apply_marketplace_answer(data, item, force_answered=True)
             r = _upsert_question(db, data)
             result['created' if r == 'created' else 'updated'] += 1
     else:
