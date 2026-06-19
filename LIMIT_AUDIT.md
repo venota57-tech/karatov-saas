@@ -850,3 +850,11 @@ backend/frontend/src/main.jsx:709:  return <div className="app">{renderSidebar()
 - Ozon operations: request limit increased to 1000.
 - Marketplace seller-cabinet answer backfill scans up to 10,000 rows per run by default and can be repeated safely.
 - WB operations remain constrained by marketplace API limits; fake rows for unsupported operation types are forbidden.
+
+## RC1.6.2 limit audit
+- Main dashboard counts are no longer derived from frontend-loaded communications arrays.
+- Reviews/questions frontend bootstrap limit reduced to 300; totals must come from `/system/dashboard`.
+- Product Summary supports `limit=0` for all grouped products and returns pagination metadata.
+- Quality Hub source calculations no longer use the previous 500-row cap.
+- Operations list uses server-side pagination and must not `.all()` into the frontend.
+- Operations sync is non-blocking; UI must use status instead of waiting for marketplace API calls.

@@ -200,12 +200,12 @@ class OperationsSyncService:
             {
                 'kind': 'act',
                 'path': '/v2/posting/fbs/act/list',
-                'payload': {'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(), 'limit': 100000},
+                'payload': {'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(), 'limit': 1000000},
             },
             {
                 'kind': 'return',
                 'path': '/v1/returns/list',
-                'payload': {'filter': {'created_since': date_from.isoformat(), 'created_to': date_to.isoformat()}, 'limit': 100000},
+                'payload': {'filter': {'created_since': date_from.isoformat(), 'created_to': date_to.isoformat()}, 'limit': 1000000},
             },
         ]
         result = {'platform': 'OZON', 'received': 0, 'created': 0, 'updated': 0, 'blocks': []}

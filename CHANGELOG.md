@@ -92,3 +92,12 @@
 - Operations list now uses server-side pagination with `total`, `offset`, `limit`, `items`.
 - Ozon operations request limit increased from 100 to 1000 where safe.
 - Operations diagnostics now explicitly mark `shortage`, `surplus`, `anonymization`, `discrepancy` as `not_connected` until endpoint/permission is implemented.
+
+## RC1.6.2 Stability + Marketplace Parity
+- Added `/system/dashboard` as the server-side source of truth for Control Tower and sidebar counters.
+- Frontend now preserves last known non-zero counters if diagnostics/dashboard temporarily returns an empty fallback.
+- Operations sync is converted to non-blocking start/status flow; `/operations/sync` now starts a background run instead of holding the UI request.
+- Added `/operations/sync/status` and `/operations/sync/start`.
+- Operations list is paginated with `total`, `offset`, `limit`, `items`.
+- Product Summary / Quality Hub backend source caps removed where `500` was acting as source-of-truth limit.
+- Unsupported Operations document types are explicitly marked `not_connected`; fake rows remain forbidden.

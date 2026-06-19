@@ -73,6 +73,34 @@ function asList(data) {
 }
 
 function dt(value) { return value ? String(value).replace("T", " ").slice(0, 19) : "—"; }
+
+function countsPayloadScore(payload) {
+  const c = payload?.counts || {};
+  return Number(c.reviews_total || 0)
+    + Number(c.questions_total || 0)
+    + Number(c.communications_total || 0)
+    + Number(c.products_total || 0)
+    + Number(c.quality_attention || 0);
+}
+
+function preserveCountsPayload(prev, next) {
+  if (!next) return prev || next;
+  const prevScore = countsPayloadScore(prev);
+  const nextScore = countsPayloadScore(next);
+
+  // Never allow a temporary empty/fallback API response to overwrite known non-zero counters.
+  if (prev?.counts && prevScore > 0 && (!next.counts || nextScore === 0)) {
+    return {
+      ...next,
+      counts: prev.counts,
+      stale_counts: true,
+      counts_guard: "kept_previous_non_zero_counts",
+    };
+  }
+
+  return next;
+}
+
 function day(value) { return value ? String(value).slice(0, 10) : "Без даты"; }
 function month(value) { return value ? String(value).slice(0, 7) : "Без месяца"; }
 
@@ -259,8 +287,8 @@ function App() {
 
     async function fastDiagnostics() {
       try {
-        const data = await api("/system/diagnostics").catch(() => api("/system/status"));
-        if (alive && data) setDiagnostics(data);
+        const data = await api("/system/dashboard").catch(() => api("/system/diagnostics").catch(() => api("/system/status")));
+        if (alive && data) setDiagnostics(prev => preserveCountsPayload(prev, data));
       } catch (e) {
         console.warn("fast diagnostics failed", e);
       }
@@ -383,18 +411,18 @@ function App() {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
         api("/reviews"),
         api("/questions"),
-        api("/system/diagnostics").catch(() => api("/system/status")),
+        api("/system/dashboard").catch(() => api("/system/diagnostics").catch(() => api("/system/status"))),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
         api("/wb-booking/status").catch(() => null),
-        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}`).catch(() => ({ items: [] })),
+        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=100`).catch(() => null),
         api(`/operations/summary?platform=${requestedPlatform}`).catch(() => null),
       ]);
       if (requestId !== refreshRequestSeq.current) return;
       if (r.status === "fulfilled" && r.value) setReviews(asList(r.value));
       if (q.status === "fulfilled" && q.value) setQuestions(asList(q.value));
-      if (d.status === "fulfilled") setDiagnostics(d.value);
+      if (d.status === "fulfilled") setDiagnostics(prev => preserveCountsPayload(prev, d.value));
       if (s.status === "fulfilled") setSyncHistory(s.value);
       if (p.status === "fulfilled") setPublishHistory(p.value);
       if (rulesData.status === "fulfilled") setRules(rulesData.value || {});
@@ -415,7 +443,7 @@ function App() {
     const requestedPlatform = normPlatform(platformOverride || platform);
     if (show) setMessage("Обновляю каталог товаров…");
     try {
-      const data = await api(`/ops/product-summary?platform=${requestedPlatform}`);
+      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=0`);
       if (requestId !== productsRequestSeq.current) return;
       const rows = (data.items || []).filter(row => rowMatchesPlatform(row, requestedPlatform));
       setProducts(rows);
@@ -675,7 +703,7 @@ function App() {
     const byType = operationsSummary?.by_type || {};
     const byStatus = operationsSummary?.by_status || {};
     const syncMessage = operationsSummary?.api_status?.message;
-    return <Section title="Marketplace Operations Hub" subtitle="Возвраты, акты, недостачи, излишки, обезличка и расхождения" actions={<><button onClick={() => run(`/operations/sync?platform=${platform}`, "Синхронизация операций")}>Синхронизировать операции</button><button className="primary" onClick={() => refreshAll(true)}>Обновить</button></>}>
+    return <Section title="Marketplace Operations Hub" subtitle="Возвраты, акты, недостачи, излишки, обезличка и расхождения" actions={<><button onClick={() => run(`/operations/sync?platform=${platform}`, "Запуск синхронизации операций")}>Синхронизировать операции</button><button className="primary" onClick={() => refreshAll(true)}>Обновить</button></>}>
       <div className="cards wideCards">
         <Card title="Всего операций" value={num(operationsSummary?.total || operations.length)} />
         {Object.entries(labels).map(([key, title]) => <Card key={key} title={title} value={num(byType[key] || 0)} onClick={() => setOperationType(key)} />)}

@@ -95,3 +95,111 @@ async def sync_operations(platform: str = 'ALL', db: Session = Depends(get_db)):
     run_lightweight_migrations()
     from ..services.operations_sync_service import OperationsSyncService
     return await OperationsSyncService(db).sync(platform=platform)
+
+
+# ---- RC1.6.2: non-blocking operations sync status ----
+
+import asyncio as _ops_asyncio
+import traceback as _ops_traceback
+from datetime import datetime as _ops_datetime, timezone as _ops_timezone
+from uuid import uuid4 as _ops_uuid4
+
+_operations_sync_state = {
+    "running": False,
+    "run_id": None,
+    "platform": None,
+    "started_at": None,
+    "finished_at": None,
+    "elapsed_seconds": 0,
+    "last_success_at": None,
+    "last_error": None,
+    "result": None,
+}
+_operations_sync_task = None
+
+
+def _ops_now():
+    return _ops_datetime.now(_ops_timezone.utc)
+
+
+def _ops_iso(dt):
+    return dt.isoformat() if dt else None
+
+
+def _ops_public_state():
+    started = _operations_sync_state.get("started_at")
+    if _operations_sync_state.get("running") and started:
+        try:
+            _operations_sync_state["elapsed_seconds"] = int((_ops_now() - _ops_datetime.fromisoformat(started)).total_seconds())
+        except Exception:
+            pass
+    return dict(_operations_sync_state)
+
+
+async def _run_operations_sync_background(platform: str, run_id: str):
+    from app.database import SessionLocal
+    from app.services.operations_sync_service import OperationsSyncService
+
+    db = SessionLocal()
+    try:
+        result = await OperationsSyncService(db).sync(platform=platform)
+        _operations_sync_state.update({
+            "running": False,
+            "finished_at": _ops_iso(_ops_now()),
+            "last_success_at": _ops_iso(_ops_now()),
+            "last_error": None,
+            "result": result,
+        })
+    except Exception as exc:
+        _operations_sync_state.update({
+            "running": False,
+            "finished_at": _ops_iso(_ops_now()),
+            "last_error": str(exc),
+            "trace": _ops_traceback.format_exc()[-2000:],
+        })
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+def _start_operations_sync(platform: str = "ALL"):
+    global _operations_sync_task
+
+    if _operations_sync_task is not None and not _operations_sync_task.done():
+        return {
+            "started": False,
+            "already_running": True,
+            "status": _ops_public_state(),
+        }
+
+    run_id = str(_ops_uuid4())
+    now = _ops_iso(_ops_now())
+    _operations_sync_state.update({
+        "running": True,
+        "run_id": run_id,
+        "platform": platform,
+        "started_at": now,
+        "finished_at": None,
+        "elapsed_seconds": 0,
+        "last_error": None,
+        "result": None,
+    })
+
+    _operations_sync_task = _ops_asyncio.create_task(_run_operations_sync_background(platform, run_id))
+    return {
+        "started": True,
+        "already_running": False,
+        "status": _ops_public_state(),
+    }
+
+
+@router.get("/sync/status")
+def operations_sync_status():
+    return _ops_public_state()
+
+
+@router.post("/sync/start")
+async def operations_sync_start(platform: str = "ALL"):
+    return _start_operations_sync(platform)

@@ -150,3 +150,12 @@ Manual run:
 - `status=answered_on_marketplace`, если запись пришла из answered/archive
 
 `answered_at` заполняется только если маркетплейс передал дату ответа в raw payload.
+
+## RC1.6.2 dashboard and operations sync
+Главная панель и левое меню используют `/system/dashboard` как источник счетчиков.
+Если отдельный API временно вернул пустой ответ, интерфейс сохраняет последние известные ненулевые счетчики.
+
+Операции:
+- `/operations/sync?platform=ALL` запускает синхронизацию в фоне и быстро возвращает статус старта.
+- `/operations/sync/status` показывает running, elapsed_seconds, last_success_at, last_error и result.
+- Неподключенные типы документов показываются как `not_connected`, без демо-данных.

@@ -124,3 +124,12 @@ def diagnostics(db: Session = Depends(get_db)):
         "wb_sync": get_sync_status() if get_sync_status else None,
         "ozon_sync": get_ozon_status() if get_ozon_status else None,
     }
+
+@router.get("/dashboard")
+def system_dashboard_endpoint(platform: str = "ALL", db = Depends(get_db)):
+    """
+    Lightweight source of truth for Control Tower and sidebar counters.
+    Must not start sync jobs or depend on frontend-loaded arrays.
+    """
+    from app.services.dashboard_service import build_dashboard
+    return build_dashboard(db, platform=platform)
