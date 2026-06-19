@@ -98,160 +98,97 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.get("/product-summary")
-def product_summary(platform: str | None = None, db: Session = Depends(get_db)):
+def product_summary(platform: str | None = None, limit: int = 500, db: Session = Depends(get_db)):
     """
-    RC1.4 Product Summary:
-    - без искусственного лимита 500 товаров;
-    - не падает, если rating_snapshots пустые/тяжелые;
-    - строит каталог по всем загруженным отзывам и вопросам;
-    - snapshots используются только как обогащение рейтинга.
+    Product Summary / Catalog / Quality Hub source.
+    Работает от серверной агрегации, не требует загрузки всех коммуникаций во фронт.
     """
-    p = platform.upper() if platform and platform.upper() != "ALL" else None
+    from sqlalchemy import func, case
 
-    reviews_q = db.query(Review)
-    questions_q = db.query(Question)
-    snaps_q = db.query(RatingSnapshot)
+    requested = (platform or "ALL").upper()
+    safe_limit = min(max(int(limit or 500), 1), 1000)
 
-    if p:
-        reviews_q = reviews_q.filter(Review.platform == p)
-        questions_q = questions_q.filter(Question.platform == p)
-        snaps_q = snaps_q.filter(RatingSnapshot.platform == p)
+    rq = db.query(Review)
+    qq = db.query(Question)
 
-    groups = {}
+    if requested != "ALL":
+        rq = rq.filter(Review.platform == requested)
+        qq = qq.filter(Question.platform == requested)
 
-    def key(platform_value, sku, product_name):
-        return f"{platform_value or 'ALL'}::{sku or product_name or 'unknown'}"
-
-    # Reviews aggregate
     review_rows = (
-        reviews_q.with_entities(
-            Review.platform,
-            Review.sku,
-            Review.product_name,
+        rq.with_entities(
+            Review.platform.label("platform"),
+            Review.sku.label("sku"),
+            Review.product_name.label("product_name"),
             func.count(Review.id).label("reviews"),
             func.avg(Review.rating).label("avg_rating"),
             func.sum(case((Review.rating <= 3, 1), else_=0)).label("negative"),
+            func.sum(case((Review.ai_risk_level == "high", 1), else_=0)).label("high_risk"),
         )
         .group_by(Review.platform, Review.sku, Review.product_name)
         .all()
     )
 
-    for platform_value, sku, product_name, reviews, avg_rating, negative in review_rows:
-        product_url = None
-        k = key(platform_value, sku, product_name)
-        g = groups.setdefault(k, {
-            "key": k,
-            "platform": platform_value,
-            "platforms": set(),
-            "sku": sku,
-            "product_name": product_name,
-            "product_url": product_url,
-            "reviews": 0,
-            "questions": 0,
-            "negative": 0,
-            "high_risk": 0,
-            "avg_rating": None,
-            "latest_rating": None,
-            "feedbacks_count": None,
-            "rating_snapshots": 0,
-        })
-        g["platforms"].add(platform_value)
-        g["reviews"] += int(reviews or 0)
-        g["negative"] += int(negative or 0)
-        g["avg_rating"] = round(float(avg_rating), 2) if avg_rating is not None else g["avg_rating"]
-        if product_url and not g.get("product_url"):
-            g["product_url"] = product_url
-
-    # Questions aggregate
     question_rows = (
-        questions_q.with_entities(
-            Question.platform,
-            Question.sku,
-            Question.product_name,
+        qq.with_entities(
+            Question.platform.label("platform"),
+            Question.sku.label("sku"),
+            Question.product_name.label("product_name"),
             func.count(Question.id).label("questions"),
         )
         .group_by(Question.platform, Question.sku, Question.product_name)
         .all()
     )
 
-    for platform_value, sku, product_name, questions in question_rows:
-        product_url = None
-        k = key(platform_value, sku, product_name)
+    groups = {}
+
+    def key(platform_value, sku, name):
+        return f"{platform_value or '—'}::{sku or name or '—'}"
+
+    for row in review_rows:
+        k = key(row.platform, row.sku, row.product_name)
         g = groups.setdefault(k, {
             "key": k,
-            "platform": platform_value,
-            "platforms": set(),
-            "sku": sku,
-            "product_name": product_name,
-            "product_url": product_url,
+            "platform": row.platform,
+            "platforms": [row.platform] if row.platform else [],
+            "sku": row.sku,
+            "product_name": row.product_name,
             "reviews": 0,
             "questions": 0,
+            "avg_rating": None,
             "negative": 0,
             "high_risk": 0,
-            "avg_rating": None,
-            "latest_rating": None,
-            "feedbacks_count": None,
-            "rating_snapshots": 0,
         })
-        g["platforms"].add(platform_value)
-        g["questions"] += int(questions or 0)
-        if product_url and not g.get("product_url"):
-            g["product_url"] = product_url
+        g["reviews"] += int(row.reviews or 0)
+        g["avg_rating"] = round(float(row.avg_rating), 2) if row.avg_rating is not None else None
+        g["negative"] += int(row.negative or 0)
+        g["high_risk"] += int(row.high_risk or 0)
 
-    # Snapshot enrichment, bounded by latest per sku/platform using DB aggregation, not UI cap.
-    try:
-        latest_rows = (
-            snaps_q.with_entities(
-                RatingSnapshot.platform,
-                RatingSnapshot.sku,
-                func.max(RatingSnapshot.created_at).label("latest_at"),
-            )
-            .group_by(RatingSnapshot.platform, RatingSnapshot.sku)
-            .all()
-        )
-        latest_keys = {(r[0], r[1], r[2]) for r in latest_rows}
-        if latest_keys:
-            for snap in snaps_q.all():
-                if (snap.platform, snap.sku, snap.created_at) not in latest_keys:
-                    continue
-                k = key(snap.platform, snap.sku, getattr(snap, "product_name", None))
-                g = groups.setdefault(k, {
-                    "key": k,
-                    "platform": snap.platform,
-                    "platforms": set(),
-                    "sku": snap.sku,
-                    "product_name": getattr(snap, "product_name", None),
-                    "product_url": getattr(snap, "product_url", None),
-                    "reviews": 0,
-                    "questions": 0,
-                    "negative": 0,
-                    "high_risk": 0,
-                    "avg_rating": None,
-                    "latest_rating": None,
-                    "feedbacks_count": None,
-                    "rating_snapshots": 0,
-                })
-                g["platforms"].add(snap.platform)
-                g["latest_rating"] = getattr(snap, "rating", None) or g.get("latest_rating")
-                g["feedbacks_count"] = getattr(snap, "feedbacks_count", None) or g.get("feedbacks_count")
-                g["rating_snapshots"] += 1
-    except Exception:
-        pass
+    for row in question_rows:
+        k = key(row.platform, row.sku, row.product_name)
+        g = groups.setdefault(k, {
+            "key": k,
+            "platform": row.platform,
+            "platforms": [row.platform] if row.platform else [],
+            "sku": row.sku,
+            "product_name": row.product_name,
+            "reviews": 0,
+            "questions": 0,
+            "avg_rating": None,
+            "negative": 0,
+            "high_risk": 0,
+        })
+        g["questions"] += int(row.questions or 0)
 
-    items = []
-    for g in groups.values():
-        g["platforms"] = sorted([x for x in g["platforms"] if x])
-        g["high_risk"] = 1 if int(g.get("negative") or 0) >= 3 else 0
-        items.append(g)
-
-    items.sort(key=lambda x: (int(x.get("negative") or 0), int(x.get("reviews") or 0) + int(x.get("questions") or 0)), reverse=True)
+    items = list(groups.values())
+    items.sort(key=lambda x: (x.get("high_risk", 0), x.get("negative", 0), x.get("reviews", 0) + x.get("questions", 0)), reverse=True)
 
     return {
-        "items": items,
         "total": len(items),
-        "source": "reviews_questions_rating_snapshots",
-        "limits_removed": True,
+        "items": items[:safe_limit],
+        "source": "reviews_questions_server_aggregation",
     }
+
 
 @router.get("/product/{sku}")
 def product_card(sku: str, platform: str | None = None, db: Session = Depends(get_db)):

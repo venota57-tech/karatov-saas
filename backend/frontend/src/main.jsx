@@ -217,12 +217,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    setProducts([]);
     setProductCard(null);
     setSelected(null);
     setDraft("");
-    setOperations([]);
-    setOperationsSummary(null);
     loadProducts(false, platform);
     refreshAll(false, platform, operationType);
   }, [platform, operationType]);
@@ -332,15 +329,15 @@ function App() {
         api(`/operations/summary?platform=${requestedPlatform}`).catch(() => null),
       ]);
       if (requestId !== refreshRequestSeq.current) return;
-      if (r.status === "fulfilled") setReviews(asList(r.value));
-      if (q.status === "fulfilled") setQuestions(asList(q.value));
+      if (r.status === "fulfilled" && r.value) setReviews(asList(r.value));
+      if (q.status === "fulfilled" && q.value) setQuestions(asList(q.value));
       if (d.status === "fulfilled") setDiagnostics(d.value);
       if (s.status === "fulfilled") setSyncHistory(s.value);
       if (p.status === "fulfilled") setPublishHistory(p.value);
       if (rulesData.status === "fulfilled") setRules(rulesData.value || {});
       if (b.status === "fulfilled") setBooking(b.value);
-      if (opsData.status === "fulfilled") setOperations(opsData.value?.items || []);
-      if (opsSummaryData.status === "fulfilled") setOperationsSummary(opsSummaryData.value);
+      if (opsData.status === "fulfilled" && opsData.value) setOperations(opsData.value?.items || []);
+      if (opsSummaryData.status === "fulfilled" && opsSummaryData.value) setOperationsSummary(opsSummaryData.value);
       setLastRefresh(new Date().toISOString());
       if (show) setMessage("Данные обновлены");
     } catch (e) {

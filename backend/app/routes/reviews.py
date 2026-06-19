@@ -23,7 +23,7 @@ def _is_ozon_no_text(review: Review) -> bool:
     return bool(getattr(review, 'no_text_rating', False))
 
 
-@router.get("", response_model=list[ReviewOut])
+@router.get("")
 def list_reviews(
     status: str | None = None,
     platform: str | None = None,

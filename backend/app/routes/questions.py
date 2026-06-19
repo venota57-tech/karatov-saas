@@ -11,7 +11,7 @@ from ..services.publishing_service import publish_question, publish_questions_bu
 
 router = APIRouter(prefix='/questions', tags=['questions'])
 
-@router.get('', response_model=list[QuestionOut])
+@router.get('')
 def list_questions(status: str | None = None, platform: str | None = None, answer_state: str = 'all', source_status: str | None = None, product: str | None = None, category: str | None = None, risk: str | None = None, response_origin: str | None = None, db: Session = Depends(get_db)):
     q = db.query(Question)
     if status:
