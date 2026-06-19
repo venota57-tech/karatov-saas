@@ -108,7 +108,7 @@ def _upsert_question(db: Session, data: dict[str, Any]) -> str:
 async def _sync_ozon_reviews_paginated(db: Session, block: str, *, answered: bool) -> dict[str, Any]:
     oz = _client()
     limit = max(1, int(settings.ozon_sync_take))
-    pages = max(1, int(getattr(settings, 'ozon_sync_pages_per_block_run', 100)))
+    pages = max(1, int(getattr(settings, 'ozon_sync_pages_per_block_run', 5)))
     cursor_key = f'{block}:last_id'
     last_id = _ozon_status.setdefault('cursors', {}).get(cursor_key)
     result = {'platform': 'OZON', 'block': block, 'created': 0, 'updated': 0, 'received': 0, 'no_text_reviews': 0, 'pages': 0, 'cursor_key': cursor_key, 'start_last_id': last_id, 'diagnostics': {'pages': []}}
@@ -203,7 +203,7 @@ def get_ozon_status() -> dict[str, Any]:
     _ozon_status['has_client_id'] = bool(settings.ozon_client_id)
     _ozon_status['has_api_key'] = bool(settings.ozon_api_key)
     _ozon_status['sync_take'] = settings.ozon_sync_take
-    _ozon_status['pages_per_block_run'] = getattr(settings, 'ozon_sync_pages_per_block_run', 100)
+    _ozon_status['pages_per_block_run'] = getattr(settings, 'ozon_sync_pages_per_block_run', 5)
     return dict(_ozon_status)
 
 

@@ -45,7 +45,9 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     tasks = []
 
-    def start_background_tasks():
+    async def delayed_background_start():
+        await asyncio.sleep(5)
+
         async def run_migrations_safe():
             try:
                 await asyncio.wait_for(asyncio.to_thread(run_lightweight_migrations), timeout=20)
@@ -55,25 +57,28 @@ async def lifespan(app: FastAPI):
 
         tasks.append(asyncio.create_task(run_migrations_safe()))
 
+        await asyncio.sleep(10)
         if wb_auto_sync_loop and (getattr(settings, "wb_api_token", "") or getattr(settings, "wb_api_key", "")):
             tasks.append(asyncio.create_task(wb_auto_sync_loop()))
-            print("[startup] WB auto sync loop scheduled")
+            print("[startup] WB auto sync loop started safely")
 
+        await asyncio.sleep(15)
         if ozon_auto_sync_loop and settings.ozon_client_id and settings.ozon_api_key:
             tasks.append(asyncio.create_task(ozon_auto_sync_loop()))
-            print("[startup] Ozon auto sync loop scheduled")
+            print("[startup] Ozon auto sync loop started safely")
 
+        await asyncio.sleep(10)
         if autopublish_loop:
             tasks.append(asyncio.create_task(autopublish_loop()))
-            print("[startup] autopublish loop scheduled")
+            print("[startup] autopublish loop started safely")
 
+        await asyncio.sleep(10)
         if booking_auto_check_loop:
             tasks.append(asyncio.create_task(booking_auto_check_loop()))
-            print("[startup] Slot Hunter loop scheduled")
+            print("[startup] Slot Hunter auto-check loop started safely")
 
-    loop = asyncio.get_running_loop()
-    loop.call_later(1, start_background_tasks)
-    print("[startup] port-first mode: background tasks scheduled after startup")
+    tasks.append(asyncio.create_task(delayed_background_start()))
+    print("[startup] port-first stable mode: API opens before background jobs")
 
     yield
 
@@ -131,7 +136,7 @@ def reviews_compat(
         q = q.filter(Review.operational_status == "needs_response")
     elif answer_state == "answered":
         q = q.filter(Review.has_answer == True)  # noqa: E712
-    rows = q.order_by(Review.created_at_marketplace.desc().nullslast(), Review.id.desc()).limit(min(limit, 2000)).all()
+    rows = q.order_by(Review.created_at_marketplace.desc().nullslast(), Review.id.desc()).limit(min(max(limit, 1), 500)).all()
     return jsonable_encoder(rows)
 
 
@@ -149,7 +154,7 @@ def questions_compat(
         q = q.filter(Question.operational_status == "needs_response")
     elif answer_state == "answered":
         q = q.filter(Question.has_answer == True)  # noqa: E712
-    rows = q.order_by(Question.created_at_marketplace.desc().nullslast(), Question.id.desc()).limit(min(limit, 2000)).all()
+    rows = q.order_by(Question.created_at_marketplace.desc().nullslast(), Question.id.desc()).limit(min(max(limit, 1), 500)).all()
     return jsonable_encoder(rows)
 
 
