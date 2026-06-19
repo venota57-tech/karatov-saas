@@ -161,6 +161,18 @@ class OperationsSyncService:
                 except Exception as exc:
                     block['error'] = str(exc)[:1000]
                     result['blocks'].append(block)
+        for missing_kind in ['shortage', 'surplus', 'anonymization', 'discrepancy']:
+            result['blocks'].append({
+                'operation_type': missing_kind,
+                'endpoint': None,
+                'received': 0,
+                'created': 0,
+                'updated': 0,
+                'status': 'not_connected',
+                'message': 'Для этого типа нужен отдельный marketplace endpoint/permission; демо-данные не создаются.'
+            })
+        result['not_connected_types'] = ['shortage', 'surplus', 'anonymization', 'discrepancy']
+
         result['received'] = sum(b.get('received', 0) for b in result['blocks'])
         result['created'] = sum(b.get('created', 0) for b in result['blocks'])
         result['updated'] = sum(b.get('updated', 0) for b in result['blocks'])
@@ -197,12 +209,12 @@ class OperationsSyncService:
             {
                 'kind': 'act',
                 'path': '/v2/posting/fbs/act/list',
-                'payload': {'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(), 'limit': 100},
+                'payload': {'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(), 'limit': 1000},
             },
             {
                 'kind': 'return',
                 'path': '/v1/returns/list',
-                'payload': {'filter': {'created_since': date_from.isoformat(), 'created_to': date_to.isoformat()}, 'limit': 100},
+                'payload': {'filter': {'created_since': date_from.isoformat(), 'created_to': date_to.isoformat()}, 'limit': 1000},
             },
         ]
         result = {'platform': 'OZON', 'received': 0, 'created': 0, 'updated': 0, 'blocks': []}
@@ -210,17 +222,34 @@ class OperationsSyncService:
             for attempt in attempts:
                 block = {'operation_type': attempt['kind'], 'endpoint': attempt['path'], 'created': 0, 'updated': 0, 'received': 0}
                 try:
-                    resp = await client.post(f"https://api-seller.ozon.ru{attempt['path']}", headers=headers, json=attempt['payload'])
-                    if resp.status_code >= 400:
-                        block['error'] = f'HTTP {resp.status_code}: {resp.text[:800]}'
-                        result['blocks'].append(block)
-                        continue
-                    data = resp.json()
-                    items = _extract_items(data)
-                    block['received'] = len(items)
-                    for item in items:
-                        status = self._upsert_ozon_operation(attempt['kind'], item)
-                        block['created' if status == 'created' else 'updated'] += 1
+                    page = 0
+                    total_items = 0
+                    while True:
+                        payload = dict(attempt['payload'])
+                        payload['limit'] = int(payload.get('limit') or 1000)
+                        payload['offset'] = page * payload['limit']
+
+                        resp = await client.post(f"https://api-seller.ozon.ru{attempt['path']}", headers=headers, json=payload)
+                        if resp.status_code >= 400:
+                            block['error'] = f'HTTP {resp.status_code}: {resp.text[:800]}'
+                            break
+
+                        data = resp.json()
+                        items = _extract_items(data)
+                        total_items += len(items)
+
+                        for item in items:
+                            status = self._upsert_ozon_operation(attempt['kind'], item)
+                            block['created' if status == 'created' else 'updated'] += 1
+
+                        if not items or len(items) < payload['limit']:
+                            break
+
+                        page += 1
+                        await asyncio.sleep(0.5)
+
+                    block['received'] = total_items
+                    block['pages'] = page + 1
                     result['blocks'].append(block)
                 except Exception as exc:
                     block['error'] = str(exc)[:1000]
