@@ -45,31 +45,35 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     tasks = []
 
-    async def _run_migrations_background():
-        try:
-            await asyncio.wait_for(asyncio.to_thread(run_lightweight_migrations), timeout=20)
-            print("[startup] DB migrations completed")
-        except Exception as e:
-            print(f"[startup] DB migration skipped/error: {e}")
+    def start_background_tasks():
+        async def run_migrations_safe():
+            try:
+                await asyncio.wait_for(asyncio.to_thread(run_lightweight_migrations), timeout=20)
+                print("[startup] DB migrations completed")
+            except Exception as e:
+                print(f"[startup] DB migration skipped/error: {e}")
 
-    tasks.append(asyncio.create_task(_run_migrations_background()))
-    print("[startup] DB migrations scheduled in background")
+        tasks.append(asyncio.create_task(run_migrations_safe()))
 
-    if wb_auto_sync_loop and (getattr(settings, "wb_api_token", "") or getattr(settings, "wb_api_key", "")):
-        tasks.append(asyncio.create_task(wb_auto_sync_loop()))
-        print("[startup] WB auto sync loop started")
+        if wb_auto_sync_loop and (getattr(settings, "wb_api_token", "") or getattr(settings, "wb_api_key", "")):
+            tasks.append(asyncio.create_task(wb_auto_sync_loop()))
+            print("[startup] WB auto sync loop scheduled")
 
-    if ozon_auto_sync_loop and settings.ozon_client_id and settings.ozon_api_key:
-        tasks.append(asyncio.create_task(ozon_auto_sync_loop()))
-        print("[startup] Ozon auto sync loop started")
+        if ozon_auto_sync_loop and settings.ozon_client_id and settings.ozon_api_key:
+            tasks.append(asyncio.create_task(ozon_auto_sync_loop()))
+            print("[startup] Ozon auto sync loop scheduled")
 
-    if autopublish_loop:
-        tasks.append(asyncio.create_task(autopublish_loop()))
-        print("[startup] autopublish loop started")
+        if autopublish_loop:
+            tasks.append(asyncio.create_task(autopublish_loop()))
+            print("[startup] autopublish loop scheduled")
 
-    if booking_auto_check_loop:
-        tasks.append(asyncio.create_task(booking_auto_check_loop()))
-        print("[startup] Slot Hunter auto-check loop started")
+        if booking_auto_check_loop:
+            tasks.append(asyncio.create_task(booking_auto_check_loop()))
+            print("[startup] Slot Hunter loop scheduled")
+
+    loop = asyncio.get_running_loop()
+    loop.call_later(1, start_background_tasks)
+    print("[startup] port-first mode: background tasks scheduled after startup")
 
     yield
 
