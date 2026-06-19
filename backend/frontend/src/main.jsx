@@ -206,14 +206,77 @@ function App() {
   const visibleQuestions = visibleItems.filter(x => x.kind === "question");
   const activeList = kind === "reviews" ? visibleReviews : visibleQuestions;
 
-  const metrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
-  const allMetrics = useMemo(() => buildMetrics(rawItems), [rawItems]);
+  const localMetrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
+  const metrics = useMemo(() => {
+    const c = diagnostics?.counts;
+    if (platform === "ALL" && c) {
+      const reviewsTotal = Number(c.reviews_total || 0);
+      const questionsTotal = Number(c.questions_total || 0);
+      const reviewsUnanswered = Number(c.reviews_unanswered || 0);
+      const questionsUnanswered = Number(c.questions_unanswered || 0);
+      const highRisk = Number(c.high_risk || 0);
+      const ready = Number(c.ready_to_publish || 0);
+
+      return {
+        ...localMetrics,
+        total: reviewsTotal + questionsTotal,
+        reviews: reviewsTotal,
+        questions: questionsTotal,
+        needs: reviewsUnanswered + questionsUnanswered,
+        drafts: ready,
+        ready,
+        risks: highRisk,
+        highRisk,
+      };
+    }
+    return localMetrics;
+  }, [localMetrics, diagnostics, platform]);
+
+  const allMetrics = useMemo(() => {
+    const base = buildMetrics(rawItems);
+    const c = diagnostics?.counts;
+    if (c) {
+      const reviewsTotal = Number(c.reviews_total || 0);
+      const questionsTotal = Number(c.questions_total || 0);
+      return {
+        ...base,
+        total: reviewsTotal + questionsTotal,
+        reviews: reviewsTotal,
+        questions: questionsTotal,
+        needs: Number(c.reviews_unanswered || 0) + Number(c.questions_unanswered || 0),
+        drafts: Number(c.ready_to_publish || 0),
+        ready: Number(c.ready_to_publish || 0),
+        risks: Number(c.high_risk || 0),
+        highRisk: Number(c.high_risk || 0),
+      };
+    }
+    return base;
+  }, [rawItems, diagnostics]);
   const insights = useMemo(() => buildInsights(platformItems, products), [platformItems, products]);
 
   useEffect(() => {
+    let alive = true;
+
+    async function fastDiagnostics() {
+      try {
+        const data = await api("/system/diagnostics").catch(() => api("/system/status"));
+        if (alive && data) setDiagnostics(data);
+      } catch (e) {
+        console.warn("fast diagnostics failed", e);
+      }
+    }
+
+    fastDiagnostics();
     refreshAll(false);
-    const timer = setInterval(() => refreshAll(false), 30000);
-    return () => clearInterval(timer);
+
+    const diagnosticsTimer = setInterval(fastDiagnostics, 15000);
+    const fullTimer = setInterval(() => refreshAll(false), 120000);
+
+    return () => {
+      alive = false;
+      clearInterval(diagnosticsTimer);
+      clearInterval(fullTimer);
+    };
   }, []);
 
   useEffect(() => {
