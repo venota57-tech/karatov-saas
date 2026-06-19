@@ -206,13 +206,26 @@ function App() {
   const visibleQuestions = visibleItems.filter(x => x.kind === "question");
   const activeList = kind === "reviews" ? visibleReviews : visibleQuestions;
 
-  const metrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
+  const localMetrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
+  const metrics = useMemo(() => {
+    const c = diagnostics?.counts;
+    if (platform === "ALL" && c) {
+      return {
+        ...localMetrics,
+        reviews: Number(c.reviews_total || 0),
+        questions: Number(c.questions_total || 0),
+        needs: Number(c.reviews_unanswered || 0) + Number(c.questions_unanswered || 0),
+        highRisk: Number(c.high_risk || 0),
+      };
+    }
+    return localMetrics;
+  }, [localMetrics, diagnostics, platform]);
   const allMetrics = useMemo(() => buildMetrics(rawItems), [rawItems]);
   const insights = useMemo(() => buildInsights(platformItems, products), [platformItems, products]);
 
   useEffect(() => {
     refreshAll(false);
-    const timer = setInterval(() => refreshAll(false), 30000);
+    const timer = setInterval(() => refreshAll(false), 120000);
     return () => clearInterval(timer);
   }, []);
 
@@ -318,8 +331,8 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api("/reviews"),
-        api("/questions"),
+        api("/reviews?limit=300"),
+        api("/questions?limit=300"),
         api("/system/diagnostics").catch(() => api("/system/status")),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
