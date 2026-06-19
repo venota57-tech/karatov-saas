@@ -206,14 +206,76 @@ function App() {
   const visibleQuestions = visibleItems.filter(x => x.kind === "question");
   const activeList = kind === "reviews" ? visibleReviews : visibleQuestions;
 
-  const metrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
-  const allMetrics = useMemo(() => buildMetrics(rawItems), [rawItems]);
+  const localMetrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
+  const metrics = useMemo(() => {
+    const c = diagnostics?.counts;
+    if (platform === "ALL" && c) {
+      const reviewsTotal = Number(c.reviews_total || 0);
+      const questionsTotal = Number(c.questions_total || 0);
+      const reviewsUnanswered = Number(c.reviews_unanswered || 0);
+      const questionsUnanswered = Number(c.questions_unanswered || 0);
+      const highRisk = Number(c.high_risk || 0);
+      const ready = Number(c.ready_to_publish || 0);
+
+      return {
+        ...localMetrics,
+        total: reviewsTotal + questionsTotal,
+        reviews: reviewsTotal,
+        questions: questionsTotal,
+        needs: reviewsUnanswered + questionsUnanswered,
+        drafts: ready,
+        risks: highRisk,
+        highRisk,
+        ready,
+      };
+    }
+    return localMetrics;
+  }, [localMetrics, diagnostics, platform]);
+
+  const allMetrics = useMemo(() => {
+    const base = buildMetrics(rawItems);
+    const c = diagnostics?.counts;
+    if (c) {
+      const reviewsTotal = Number(c.reviews_total || 0);
+      const questionsTotal = Number(c.questions_total || 0);
+      return {
+        ...base,
+        total: reviewsTotal + questionsTotal,
+        reviews: reviewsTotal,
+        questions: questionsTotal,
+        needs: Number(c.reviews_unanswered || 0) + Number(c.questions_unanswered || 0),
+        drafts: Number(c.ready_to_publish || 0),
+        risks: Number(c.high_risk || 0),
+        highRisk: Number(c.high_risk || 0),
+      };
+    }
+    return base;
+  }, [rawItems, diagnostics]);
   const insights = useMemo(() => buildInsights(platformItems, products), [platformItems, products]);
 
   useEffect(() => {
+    let mounted = true;
+
+    async function loadFastDiagnostics() {
+      try {
+        const data = await api("/system/diagnostics");
+        if (mounted && data) setDiagnostics(data);
+      } catch (e) {
+        console.warn("fast diagnostics failed", e);
+      }
+    }
+
+    loadFastDiagnostics();
     refreshAll(false);
-    const timer = setInterval(() => refreshAll(false), 30000);
-    return () => clearInterval(timer);
+
+    const diagnosticsTimer = setInterval(loadFastDiagnostics, 15000);
+    const fullRefreshTimer = setInterval(() => refreshAll(false), 120000);
+
+    return () => {
+      mounted = false;
+      clearInterval(diagnosticsTimer);
+      clearInterval(fullRefreshTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -318,8 +380,8 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api("/reviews"),
-        api("/questions"),
+        api("/reviews?limit=300"),
+        api("/questions?limit=300"),
         api("/system/diagnostics").catch(() => api("/system/status")),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
