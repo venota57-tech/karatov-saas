@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     tasks = []
 
     async def delayed_background_start():
-        await asyncio.sleep(60)
+        await asyncio.sleep(5)
 
         async def run_migrations_safe():
             try:
@@ -57,15 +57,25 @@ async def lifespan(app: FastAPI):
 
         tasks.append(asyncio.create_task(run_migrations_safe()))
 
-        await asyncio.sleep(20)
+        await asyncio.sleep(10)
         if wb_auto_sync_loop and (getattr(settings, "wb_api_token", "") or getattr(settings, "wb_api_key", "")):
             tasks.append(asyncio.create_task(wb_auto_sync_loop()))
             print("[startup] WB auto sync loop started safely")
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(15)
         if ozon_auto_sync_loop and settings.ozon_client_id and settings.ozon_api_key:
             tasks.append(asyncio.create_task(ozon_auto_sync_loop()))
             print("[startup] Ozon auto sync loop started safely")
+
+        await asyncio.sleep(10)
+        if autopublish_loop:
+            tasks.append(asyncio.create_task(autopublish_loop()))
+            print("[startup] autopublish loop started safely")
+
+        await asyncio.sleep(10)
+        if booking_auto_check_loop:
+            tasks.append(asyncio.create_task(booking_auto_check_loop()))
+            print("[startup] Slot Hunter auto-check loop started safely")
 
     tasks.append(asyncio.create_task(delayed_background_start()))
     print("[startup] port-first stable mode: API opens before background jobs")
