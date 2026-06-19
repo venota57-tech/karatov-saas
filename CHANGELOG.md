@@ -85,3 +85,10 @@
 - WB Questions и WB Archive могут оставаться never_run.
 - Ozon может не завершать run и не писать last_finished_at.
 - Ozon может повторно читать один и тот же диапазон записей.
+
+## RC1.6.1 Data Integrity & Product Limits
+- Added `/sync/backfill-marketplace-answers` to backfill answers published directly in WB/Ozon seller cabinets from already synced answered/archive raw data.
+- Product Summary / Quality Hub no longer use backend `500` as source-of-truth limit. Endpoint now supports `total`, `offset`, `limit`; `limit=0` returns all product groups.
+- Operations list now uses server-side pagination with `total`, `offset`, `limit`, `items`.
+- Ozon operations request limit increased from 100 to 1000 where safe.
+- Operations diagnostics now explicitly mark `shortage`, `surplus`, `anonymization`, `discrepancy` as `not_connected` until endpoint/permission is implemented.

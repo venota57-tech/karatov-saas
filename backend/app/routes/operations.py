@@ -43,7 +43,7 @@ def _serialize(row: MarketplaceOperation) -> dict[str, Any]:
     }
 
 @router.get('')
-def list_operations(platform: str = 'ALL', operation_type: str = 'all', status: str = 'all', db: Session = Depends(get_db)):
+def list_operations(platform: str = 'ALL', operation_type: str = 'all', status: str = 'all', limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):
     run_lightweight_migrations()
     q = db.query(MarketplaceOperation)
     if platform and platform.upper() != 'ALL':
@@ -52,7 +52,9 @@ def list_operations(platform: str = 'ALL', operation_type: str = 'all', status: 
         q = q.filter(MarketplaceOperation.operation_type == operation_type)
     if status and status != 'all':
         q = q.filter(MarketplaceOperation.status == status)
-    rows = q.order_by(MarketplaceOperation.occurred_at.desc().nullslast(), MarketplaceOperation.id.desc()).all()
+    safe_limit = min(max(int(limit or 100), 1), 500)
+    safe_offset = max(int(offset or 0), 0)
+    rows = q.order_by(MarketplaceOperation.occurred_at.desc().nullslast(), MarketplaceOperation.id.desc()).offset(safe_offset).limit(safe_limit).all()
     return {'items': [_serialize(r) for r in rows]}
 
 @router.get('/summary')

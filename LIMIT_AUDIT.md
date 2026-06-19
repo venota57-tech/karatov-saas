@@ -842,3 +842,11 @@ backend/frontend/src/main.jsx:704:    if (page === "settings") return renderSett
 backend/frontend/src/main.jsx:705:    if (page === "security") return renderSecurity();
 backend/frontend/src/main.jsx:706:    return renderTower();
 backend/frontend/src/main.jsx:709:  return <div className="app">{renderSidebar()}<main>{message && <div className="message">{message}</div>}{content()}</main></div>;
+
+## RC1.6.1 limit audit
+- Product Summary: removed artificial backend cap. UI may still paginate/display, but backend returns `total`.
+- Quality Hub: removed 500-row source cap in ops history aggregation.
+- Operations list: `.all()` response replaced with paginated result.
+- Ozon operations: request limit increased to 1000.
+- Marketplace seller-cabinet answer backfill scans up to 10,000 rows per run by default and can be repeated safely.
+- WB operations remain constrained by marketplace API limits; fake rows for unsupported operation types are forbidden.

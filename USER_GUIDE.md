@@ -136,3 +136,17 @@ KARATOV CX Hub — операционная платформа для работ
 - Operations Hub находится в разработке;
 - автопубликация требует дополнительного quality gate;
 - Slot Hunter PRO требует сохранения настроек между релизами.
+
+## RC1.6.1 seller cabinet answers
+Если оператор ответил на отзыв или вопрос напрямую в кабинете WB/Ozon, CX Hub может подтянуть этот ответ через answered/archive sync и backfill.
+
+Manual run:
+`/sync/backfill-marketplace-answers`
+
+После backfill записи с ответом получают:
+- `has_answer=true`
+- `response_origin=seller_cabinet`
+- `final_answer`
+- `status=answered_on_marketplace`, если запись пришла из answered/archive
+
+`answered_at` заполняется только если маркетплейс передал дату ответа в raw payload.

@@ -48,3 +48,14 @@ async def sync_wildberries_backfill_next(db: Session = Depends(get_db)):
         return await run_sync_wb_backfill_once(db=db, source='manual_backfill')
     except Exception as exc:
         raise HTTPException(400, f'Ошибка исторической дозагрузки WB: {exc}')
+
+
+@router.get("/backfill-marketplace-answers")
+@router.post("/backfill-marketplace-answers")
+def backfill_marketplace_answers_endpoint(limit: int = 10000, db: Session = Depends(get_db)):
+    """
+    Backfill answers that were published directly in WB/Ozon seller cabinets
+    from already synced answered/archive raw payloads.
+    """
+    from app.services.marketplace_answer_backfill_service import backfill_marketplace_answers
+    return backfill_marketplace_answers(db, limit=limit)

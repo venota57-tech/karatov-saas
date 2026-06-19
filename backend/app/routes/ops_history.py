@@ -98,7 +98,7 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.get("/product-summary")
-def product_summary(platform: str | None = None, limit: int = 500, db: Session = Depends(get_db)):
+def product_summary(platform: str | None = None, limit: int = 0, offset: int = 0, db: Session = Depends(get_db)):
     """
     Product Summary / Catalog / Quality Hub source.
     Работает от серверной агрегации, не требует загрузки всех коммуникаций во фронт.
@@ -106,7 +106,8 @@ def product_summary(platform: str | None = None, limit: int = 500, db: Session =
     from sqlalchemy import func, case
 
     requested = (platform or "ALL").upper()
-    safe_limit = min(max(int(limit or 500), 1), 1000)
+    safe_offset = max(int(offset or 0), 0)
+    safe_limit = max(int(limit or 0), 0)
 
     rq = db.query(Review)
     qq = db.query(Question)
@@ -183,9 +184,13 @@ def product_summary(platform: str | None = None, limit: int = 500, db: Session =
     items = list(groups.values())
     items.sort(key=lambda x: (x.get("high_risk", 0), x.get("negative", 0), x.get("reviews", 0) + x.get("questions", 0)), reverse=True)
 
+    paged_items = items[safe_offset:] if safe_limit <= 0 else items[safe_offset:safe_offset + safe_limit]
+
     return {
         "total": len(items),
-        "items": items[:safe_limit],
+        "offset": safe_offset,
+        "limit": safe_limit,
+        "items": paged_items,
         "source": "reviews_questions_server_aggregation",
     }
 
@@ -197,8 +202,8 @@ def product_card(sku: str, platform: str | None = None, db: Session = Depends(ge
     if platform and platform.upper() != "ALL":
         q1 = q1.filter(Review.platform == platform.upper())
         q2 = q2.filter(Question.platform == platform.upper())
-    reviews = q1.order_by(Review.created_at_marketplace.desc().nullslast()).limit(500).all()
-    questions = q2.order_by(Question.created_at_marketplace.desc().nullslast()).limit(500).all()
+    reviews = q1.order_by(Review.created_at_marketplace.desc().nullslast()).all()
+    questions = q2.order_by(Question.created_at_marketplace.desc().nullslast()).all()
     all_rows = reviews + questions
     first = all_rows[0] if all_rows else None
     return {

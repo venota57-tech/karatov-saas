@@ -161,6 +161,9 @@ class OperationsSyncService:
                 except Exception as exc:
                     block['error'] = str(exc)[:1000]
                     result['blocks'].append(block)
+        for missing_kind in ['shortage', 'surplus', 'anonymization', 'discrepancy']:
+            result['blocks'].append({'operation_type': missing_kind, 'endpoint': None, 'status': 'not_connected', 'received': 0, 'created': 0, 'updated': 0, 'message': 'Endpoint/permission is not connected yet; fake rows are not created.'})
+        result['not_connected_types'] = ['shortage', 'surplus', 'anonymization', 'discrepancy']
         result['received'] = sum(b.get('received', 0) for b in result['blocks'])
         result['created'] = sum(b.get('created', 0) for b in result['blocks'])
         result['updated'] = sum(b.get('updated', 0) for b in result['blocks'])
@@ -197,12 +200,12 @@ class OperationsSyncService:
             {
                 'kind': 'act',
                 'path': '/v2/posting/fbs/act/list',
-                'payload': {'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(), 'limit': 100},
+                'payload': {'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(), 'limit': 100000},
             },
             {
                 'kind': 'return',
                 'path': '/v1/returns/list',
-                'payload': {'filter': {'created_since': date_from.isoformat(), 'created_to': date_to.isoformat()}, 'limit': 100},
+                'payload': {'filter': {'created_since': date_from.isoformat(), 'created_to': date_to.isoformat()}, 'limit': 100000},
             },
         ]
         result = {'platform': 'OZON', 'received': 0, 'created': 0, 'updated': 0, 'blocks': []}
@@ -226,6 +229,9 @@ class OperationsSyncService:
                     block['error'] = str(exc)[:1000]
                     result['blocks'].append(block)
                 await asyncio.sleep(1.0)
+        for missing_kind in ['shortage', 'surplus', 'anonymization', 'discrepancy']:
+            result['blocks'].append({'operation_type': missing_kind, 'endpoint': None, 'status': 'not_connected', 'received': 0, 'created': 0, 'updated': 0, 'message': 'Endpoint/permission is not connected yet; fake rows are not created.'})
+        result['not_connected_types'] = ['shortage', 'surplus', 'anonymization', 'discrepancy']
         result['received'] = sum(b.get('received', 0) for b in result['blocks'])
         result['created'] = sum(b.get('created', 0) for b in result['blocks'])
         result['updated'] = sum(b.get('updated', 0) for b in result['blocks'])
