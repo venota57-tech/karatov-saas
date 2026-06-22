@@ -31,3 +31,9 @@
 - Fixed dashboard product count to use real reviews/questions product keys.
 - Raised Product Summary frontend load from 500 to 5000 for current full catalog visibility.
 - Fixed startup dashboard request that referenced requestedPlatform outside refreshAll.
+
+## RC1.6.5 Data Restore - no false ceilings
+- Restored priority reviews/questions endpoints with correct platform=ALL behavior.
+- Product Summary UI now loads by server-reported total instead of fixed 500/5000 ceilings.
+- Dashboard product count now uses the same reviews/questions source as Product Summary.
+- Removed stale dashboard-count preservation when switching marketplace tabs.

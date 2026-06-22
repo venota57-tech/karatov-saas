@@ -90,6 +90,7 @@ def _products_total(conn, platform: str) -> int | None:
 
     rw = _where(platform)
     qw = _where(platform)
+
     sql = f"""
     SELECT COUNT(*) FROM (
       SELECT DISTINCT
@@ -110,34 +111,6 @@ def _products_total(conn, platform: str) -> int | None:
         return int(value) if value is not None else None
     except Exception:
         return None
-
-
-def _ym_payload() -> dict[str, Any]:
-    counts = {
-        "reviews_total": 0,
-        "questions_total": 0,
-        "communications_total": 0,
-        "reviews_unanswered": 0,
-        "questions_unanswered": 0,
-        "needs_response": 0,
-        "ready_to_publish": 0,
-        "high_risk": 0,
-        "no_text_reviews": 0,
-        "avg_rating": None,
-        "products_total": 0,
-        "quality_attention": 0,
-        "operations_total": 0,
-        "operations_by_type": {},
-    }
-    return {
-        "ok": True,
-        "status": "not_connected",
-        "platform": "YM",
-        "generated_at": _now(),
-        "source": "server_fast_counts",
-        "marketplace_state": "not_connected",
-        "counts": counts,
-    }
 
 
 def build_dashboard(db=None, platform: str | None = "ALL") -> dict[str, Any]:

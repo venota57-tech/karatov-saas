@@ -295,7 +295,7 @@ function App() {
     async function fastDiagnostics() {
       try {
         const data = await api(`/system/dashboard?platform=${encodeURIComponent(normPlatform(platform || "ALL"))}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: normPlatform(platform || "ALL"), counts: null, source: "frontend_dashboard_timeout" }));
-        if (alive && data) setDiagnostics(prev => preserveCountsPayload(prev, data));
+        if (alive && data) setDiagnostics(data);
       } catch (e) {
         console.warn("fast diagnostics failed", e);
       }
@@ -429,7 +429,7 @@ function App() {
       if (requestId !== refreshRequestSeq.current) return;
       if (r.status === "fulfilled" && r.value) setReviews(asList(r.value));
       if (q.status === "fulfilled" && q.value) setQuestions(asList(q.value));
-      if (d.status === "fulfilled") setDiagnostics(prev => preserveCountsPayload(prev, d.value));
+      if (d.status === "fulfilled") setDiagnostics(d.value);
       if (s.status === "fulfilled") setSyncHistory(s.value);
       if (p.status === "fulfilled") setPublishHistory(p.value);
       if (rulesData.status === "fulfilled") setRules(rulesData.value || {});
@@ -450,7 +450,11 @@ function App() {
     const requestedPlatform = normPlatform(platformOverride || platform);
     if (show) setMessage("Обновляю каталог товаров…");
     try {
-      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=5000`, { timeoutMs: 10000 });
+      const meta = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=1`, { timeoutMs: 10000 });
+      const productTotal = Number(meta?.total || 0);
+      const data = productTotal > 1
+        ? await api(`/ops/product-summary?platform=${requestedPlatform}&limit=${encodeURIComponent(productTotal)}`, { timeoutMs: 20000 })
+        : meta;
       if (requestId !== productsRequestSeq.current) return;
       const rows = (data.items || []).filter(row => rowMatchesPlatform(row, requestedPlatform));
       setProducts(rows);

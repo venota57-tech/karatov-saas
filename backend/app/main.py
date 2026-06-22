@@ -70,7 +70,8 @@ def include_router_safe(module_path: str):
         print(f"[router] skipped {module_path}: {e}")
 
 
-# KARATOV_PRIORITY_DATA_ROUTES_RC165
+
+# KARATOV_PRIORITY_DATA_ROUTES_RC165_FIXED
 def _karatov_platform_aliases(platform: str | None):
     p = (platform or "ALL").strip().upper()
     if p in {"", "ALL"}:
@@ -84,26 +85,15 @@ def _karatov_platform_aliases(platform: str | None):
     return [p]
 
 
-def _karatov_apply_common_filters(q, model, platform=None, status=None, source_status=None, product=None, risk=None, response_origin=None):
+def _karatov_filter_platform(q, model, platform: str | None):
     aliases = _karatov_platform_aliases(platform)
     if aliases:
-        q = q.filter(model.platform.in_(aliases))
-    if status and status != "all" and hasattr(model, "status"):
-        q = q.filter(model.status == status)
-    if source_status:
-        q = q.filter(model.source_status == source_status)
-    if product:
-        like = f"%{product}%"
-        q = q.filter((model.sku.ilike(like)) | (model.product_name.ilike(like)))
-    if risk:
-        q = q.filter(model.ai_risk_level == risk)
-    if response_origin:
-        q = q.filter(model.response_origin == response_origin)
+        return q.filter(model.platform.in_(aliases))
     return q
 
 
 @app.get("/reviews")
-def reviews_priority_rc165(
+def reviews_priority_rc165_fixed(
     platform: str | None = None,
     status: str | None = None,
     answer_state: str | None = None,
@@ -117,7 +107,24 @@ def reviews_priority_rc165(
     db: Session = Depends(get_db),
 ):
     q = db.query(Review)
-    q = _karatov_apply_common_filters(q, Review, platform, status, source_status, product, risk, response_origin)
+    q = _karatov_filter_platform(q, Review, platform)
+
+    if status and status != "all":
+        q = q.filter(Review.status == status)
+
+    if source_status:
+        q = q.filter(Review.source_status == source_status)
+
+    if product:
+        like = f"%{product}%"
+        q = q.filter((Review.sku.ilike(like)) | (Review.product_name.ilike(like)))
+
+    if risk:
+        q = q.filter(Review.ai_risk_level == risk)
+
+    if response_origin:
+        q = q.filter(Review.response_origin == response_origin)
+
     if answer_state and answer_state != "all":
         if answer_state == "unanswered":
             q = q.filter(Review.operational_status == "needs_response")
@@ -125,14 +132,21 @@ def reviews_priority_rc165(
             q = q.filter(Review.has_answer == True)  # noqa: E712
         elif answer_state == "no_text":
             q = q.filter(Review.operational_status == "no_text_rating")
-    safe_limit = min(max(int(limit or 200), 1), 5000)
+
+    safe_limit = min(max(int(limit or 200), 1), 1000)
     safe_offset = max(int(offset or 0), 0)
-    rows = q.order_by(Review.created_at_marketplace.desc(), Review.id.desc()).offset(safe_offset).limit(safe_limit).all()
+
+    rows = (
+        q.order_by(Review.created_at_marketplace.desc(), Review.id.desc())
+        .offset(safe_offset)
+        .limit(safe_limit)
+        .all()
+    )
     return jsonable_encoder(rows)
 
 
 @app.get("/questions")
-def questions_priority_rc165(
+def questions_priority_rc165_fixed(
     platform: str | None = None,
     status: str | None = None,
     answer_state: str | None = None,
@@ -146,15 +160,39 @@ def questions_priority_rc165(
     db: Session = Depends(get_db),
 ):
     q = db.query(Question)
-    q = _karatov_apply_common_filters(q, Question, platform, status, source_status, product, risk, response_origin)
+    q = _karatov_filter_platform(q, Question, platform)
+
+    if status and status != "all":
+        q = q.filter(Question.status == status)
+
+    if source_status:
+        q = q.filter(Question.source_status == source_status)
+
+    if product:
+        like = f"%{product}%"
+        q = q.filter((Question.sku.ilike(like)) | (Question.product_name.ilike(like)))
+
+    if risk:
+        q = q.filter(Question.ai_risk_level == risk)
+
+    if response_origin:
+        q = q.filter(Question.response_origin == response_origin)
+
     if answer_state and answer_state != "all":
         if answer_state == "unanswered":
             q = q.filter(Question.operational_status == "needs_response")
         elif answer_state == "answered":
             q = q.filter(Question.has_answer == True)  # noqa: E712
-    safe_limit = min(max(int(limit or 200), 1), 5000)
+
+    safe_limit = min(max(int(limit or 200), 1), 1000)
     safe_offset = max(int(offset or 0), 0)
-    rows = q.order_by(Question.created_at_marketplace.desc(), Question.id.desc()).offset(safe_offset).limit(safe_limit).all()
+
+    rows = (
+        q.order_by(Question.created_at_marketplace.desc(), Question.id.desc())
+        .offset(safe_offset)
+        .limit(safe_limit)
+        .all()
+    )
     return jsonable_encoder(rows)
 
 
