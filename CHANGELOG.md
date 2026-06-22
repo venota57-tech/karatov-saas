@@ -129,3 +129,11 @@
 - Added seller-cabinet published answer enrichment service for WB and Ozon.
 - Added worker job types: wb_answer_enrichment, ozon_answer_enrichment, answer_enrichment_all, marketplace_os_refresh.
 - Preserved HTTP-first web startup: no WB/Ozon/autopublish/booking/dashboard loops in FastAPI lifespan.
+
+## RC1.7.1 Full Sync Engine
+- Added worker-first full sync orchestration for WB, Ozon, Operations and published-answer enrichment.
+- Ozon review cursors are restored from and persisted to SyncCursor so backfill does not restart after deploys.
+- WB full sync runs all communication/archive blocks in worker cycles without putting work in web startup.
+- Operations sync no longer writes new as a meaningless default for freshly synced rows; unsupported blocks are reported honestly.
+- Added /full-sync/enqueue and /full-sync/plan.
+- Added Render worker blueprint entry: karatov-saas-worker, command python -m app.worker.

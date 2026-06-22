@@ -183,7 +183,7 @@ class OperationsSyncService:
             'amount': str(_first(item, ['price','retailPrice','amount','sum']) or '') or None,
             'quantity': int(_first(item, ['quantity','qty']) or 1),
             'reason': _first(item, ['reason','returnReason','comment','status']),
-            'status': 'new',
+            'status': 'synced',
             'raw': item,
             'occurred_at': _parse_dt(_first(item, ['date','returnDate','createdAt','lastChangeDate'])) or _now_utc(),
         }
@@ -251,7 +251,7 @@ class OperationsSyncService:
             'amount': str(_first(item, ['amount','price','total_price','totalPrice']) or '') or None,
             'quantity': int(_first(item, ['quantity','qty']) or 1),
             'reason': _first(item, ['reason','return_reason_name','status','state']),
-            'status': 'new',
+            'status': 'synced',
             'raw': item,
             'occurred_at': _parse_dt(_first(item, ['created_at','createdAt','date','act_date','actDate','return_date','returnDate'])) or _now_utc(),
         }

@@ -43,12 +43,9 @@ except Exception as e:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    RC1.7.0 Marketplace OS.
-    Web serves UI/API only. Heavy WB/Ozon/Operations/Product/Quality jobs
-    must run through worker/queue, never through web startup.
-    """
-    print("[startup] HTTP-first Marketplace OS mode: background loops are disabled in web lifespan")
+    # RC1.7.1 Full Sync Engine: web is API/UI only.
+    # Full marketplace ingestion runs via worker jobs, never in startup.
+    print("[startup] HTTP-first mode: full sync engine is worker-only")
     yield
 
 
@@ -170,6 +167,7 @@ def questions_priority_rc170(
 
 
 for route in [
+    "app.routes.full_sync",
     "app.routes.marketplace_os",
     "app.routes.system",
     "app.routes.jobs",

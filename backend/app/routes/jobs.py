@@ -23,6 +23,10 @@ def jobs_enqueue(job_type: str, platform: str | None = None, block: str | None =
         "ozon_answer_enrichment",
         "answer_enrichment_all",
         "marketplace_os_refresh",
+        "full_sync_all",
+        "full_sync_wb",
+        "full_sync_ozon",
+        "full_sync_operations",
     }
     if job_type not in allowed:
         raise HTTPException(400, f"Unsupported job_type: {job_type}")

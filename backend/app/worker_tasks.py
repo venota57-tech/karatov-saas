@@ -36,6 +36,31 @@ def run_sync_job(sync_job_id: int, job_type: str, platform: str | None = None, b
     db = SessionLocal()
     try:
         _mark(db, sync_job_id, "running")
+
+        if job_type == "full_sync_all":
+            from app.services.full_sync_engine import full_sync_all
+            result = asyncio.run(full_sync_all(db))
+            _mark(db, sync_job_id, "success" if result.get("ok") else "failed", result=result, error=result.get("error"))
+            return result
+
+        if job_type == "full_sync_wb":
+            from app.services.full_sync_engine import sync_wb_full
+            result = asyncio.run(sync_wb_full(db))
+            _mark(db, sync_job_id, "success" if result.get("ok") else "failed", result=result, error=result.get("error"))
+            return result
+
+        if job_type == "full_sync_ozon":
+            from app.services.full_sync_engine import sync_ozon_full
+            result = asyncio.run(sync_ozon_full(db))
+            _mark(db, sync_job_id, "success" if result.get("ok") else "failed", result=result, error=result.get("error"))
+            return result
+
+        if job_type == "full_sync_operations":
+            from app.services.full_sync_engine import sync_operations_full
+            result = asyncio.run(sync_operations_full(db, platform=platform or "ALL"))
+            _mark(db, sync_job_id, "success" if result.get("ok") else "failed", result=result, error=result.get("error"))
+            return result
+
         if job_type == "dashboard_refresh":
             result = {"ALL": build_dashboard(platform="ALL"), "WB": build_dashboard(platform="WB"), "OZON": build_dashboard(platform="OZON"), "YM": build_dashboard(platform="YM")}
             _mark(db, sync_job_id, "success", result=result)
