@@ -246,3 +246,54 @@ def serve_frontend_fallback(full_path: str):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return JSONResponse(status_code=404, content={"error": "Frontend not found"})
+
+# KARATOV_EMERGENCY_DASHBOARD_MIDDLEWARE_V1
+# Temporary safety guard: /system/dashboard must never block application startup/UI.
+try:
+    from datetime import datetime, timezone as _karatov_timezone
+    from fastapi.responses import JSONResponse as _KaratovJSONResponse
+
+    @app.middleware("http")
+    async def _karatov_emergency_dashboard_middleware(request, call_next):
+        if request.url.path == "/system/dashboard":
+            platform = (request.query_params.get("platform") or "ALL").upper()
+            if platform in {"WILDBERRIES", "WILDBERRY", "ВБ"}:
+                platform = "WB"
+            elif platform in {"OZON.RU", "ОЗОН"}:
+                platform = "OZON"
+            elif platform in {"YANDEX", "YANDEX_MARKET", "ЯМ", "ЯНДЕКС"}:
+                platform = "YM"
+            elif platform not in {"ALL", "WB", "OZON", "YM"}:
+                platform = str(platform)
+
+            return _KaratovJSONResponse({
+                "ok": True,
+                "platform": platform,
+                "generated_at": datetime.now(_karatov_timezone.utc).isoformat(),
+                "source": "emergency_dashboard_middleware",
+                "counts": {
+                    "reviews_total": 0,
+                    "questions_total": 0,
+                    "communications_total": 0,
+                    "reviews_unanswered": 0,
+                    "questions_unanswered": 0,
+                    "needs_response": 0,
+                    "ready_to_publish": 0,
+                    "high_risk": 0,
+                    "no_text_reviews": 0,
+                    "avg_rating": None,
+                    "products_total": None,
+                    "quality_attention": None,
+                    "operations_total": None,
+                    "operations_by_type": {}
+                },
+                "status": {
+                    "dashboard_mode": "emergency_lightweight",
+                    "message": "Dashboard route is temporarily protected from heavy DB aggregation. Detailed counters must be restored through RC1.6.4 cached dashboard endpoint."
+                }
+            })
+
+        return await call_next(request)
+except Exception as _karatov_dashboard_guard_error:
+    print("[emergency_dashboard_middleware] disabled:", _karatov_dashboard_guard_error)
+
