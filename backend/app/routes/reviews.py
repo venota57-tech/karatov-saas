@@ -66,7 +66,9 @@ def list_reviews(
         q = q.filter(Review.status.in_(["auto_published", "published"]))
     safe_limit = min(max(int(limit or 200), 1), 500)
     safe_offset = max(int(offset or 0), 0)
-    return q.order_by(desc(Review.created_at_marketplace), desc(Review.created_at)).offset(safe_offset).limit(safe_limit).all()
+    safe_limit = min(max(int(limit or 200), 1), 500)
+    safe_offset = max(int(offset or 0), 0)
+    return q.order_by(desc(Review.created_at_marketplace), desc(Review.created_at)).offset(safe_offset).limit(safe_limit).offset(safe_offset).limit(safe_limit).all()
 
 
 @router.post("/{review_id}/generate", response_model=ReviewOut)

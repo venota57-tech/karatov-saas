@@ -2,7 +2,16 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from .config import settings
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+
+_engine_kwargs = {"pool_pre_ping": True}
+
+if not str(settings.database_url).startswith("sqlite"):
+    _engine_kwargs.update({
+        "pool_timeout": 5,
+        "pool_recycle": 1800,
+    })
+
+engine = create_engine(settings.database_url, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
@@ -28,10 +37,6 @@ def _add_column_if_missing(conn, table: str, column: str, column_type: str) -> N
 
 
 def run_lightweight_migrations():
-    """
-    Безопасная миграция Render/PostgreSQL и локального SQLite.
-    Ничего не удаляет. Только добавляет недостающие поля.
-    """
     from . import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
@@ -116,7 +121,6 @@ def run_lightweight_migrations():
         "created_at": dt_type,
     }
 
-
     operation_columns = {
         "platform": "VARCHAR(32)",
         "operation_type": "VARCHAR(64)",
@@ -152,7 +156,6 @@ def run_lightweight_migrations():
 
         conn.execute(text("UPDATE reviews SET status = 'new' WHERE status IS NULL"))
         conn.execute(text("UPDATE questions SET status = 'new' WHERE status IS NULL"))
-
         conn.execute(text("UPDATE reviews SET ai_can_autopublish = FALSE WHERE ai_can_autopublish IS NULL"))
         conn.execute(text("UPDATE questions SET ai_can_autopublish = FALSE WHERE ai_can_autopublish IS NULL"))
 

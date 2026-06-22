@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends
-from sqlalchemy.orm import Session
-
+from fastapi import APIRouter
 from ..config import settings
-from ..database import get_db, run_lightweight_migrations
-from ..services.dashboard_snapshot_service import get_dashboard_snapshot, refresh_dashboard_snapshots_once
+from ..database import run_lightweight_migrations
+from ..services.dashboard_service import build_dashboard, refresh_dashboard
 
 try:
     from ..services.sync_service import get_sync_status
@@ -31,9 +29,15 @@ def migrate_post():
     return run_lightweight_migrations()
 
 
+@router.get("/status")
+def system_status():
+    return {"ok": True, "status": "ok", "source": "system_route_lightweight"}
+
+
 @router.get("/diagnostics")
 def diagnostics():
     return {
+        "ok": True,
         "status": "ok",
         "source": "lightweight_diagnostics",
         "keys": {
@@ -48,16 +52,15 @@ def diagnostics():
             "ozon": get_ozon_status() if get_ozon_status else None,
             "ym": {"status": "not_connected"},
         },
-        "note": "Diagnostics endpoint is intentionally lightweight and does not run migrations, DB aggregates or sync jobs.",
+        "note": "Diagnostics is intentionally lightweight: no migrations, no live DB aggregates, no sync jobs.",
     }
 
 
 @router.get("/dashboard")
-def system_dashboard_endpoint(platform: str = "ALL", db: Session = Depends(get_db)):
-    return get_dashboard_snapshot(db, platform)
+def system_dashboard_endpoint(platform: str = "ALL"):
+    return build_dashboard(platform=platform)
 
 
 @router.post("/dashboard/refresh")
-def system_dashboard_refresh(background_tasks: BackgroundTasks):
-    background_tasks.add_task(refresh_dashboard_snapshots_once)
-    return {"ok": True, "status": "scheduled", "message": "Dashboard snapshot refresh scheduled in background."}
+def system_dashboard_refresh():
+    return refresh_dashboard()

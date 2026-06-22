@@ -59,14 +59,14 @@ const DEFAULT_ROLE_RIGHTS = {
 };
 
 async function api(path, options = {}) {
-  const { timeoutMs = 25000, ...fetchOptions } = options || {};
+  const { timeoutMs = 9000, ...fetchOptions } = options || {};
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(path, { headers: { "Content-Type": "application/json" }, signal: controller.signal, ...fetchOptions });
-    const text = await res.text();
+    const raw = await res.text();
     let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
     if (!res.ok) throw new Error(typeof data === "object" ? (data.detail || data.error || JSON.stringify(data)) : data);
     return data;
   } finally {
@@ -419,12 +419,12 @@ function App() {
         api(`/reviews?platform=${requestedPlatform}&limit=200`).catch(() => []),
         api(`/questions?platform=${requestedPlatform}&limit=200`).catch(() => []),
         api(`/system/dashboard?platform=${encodeURIComponent(normPlatform(platform || "ALL"))}`).catch(() => api("/system/status")),
-        api("/ops/sync-history").catch(() => null),
-        api("/ops/publish-history").catch(() => null),
-        api("/settings/automation-rules").catch(() => ({})),
-        api("/wb-booking/status").catch(() => null),
-        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=100`).catch(() => null),
-        api(`/operations/summary?platform=${requestedPlatform}`).catch(() => null),
+        api("/ops/sync-history", { timeoutMs: 4000 }).catch(() => null),
+        api("/ops/publish-history", { timeoutMs: 4000 }).catch(() => null),
+        api("/settings/automation-rules", { timeoutMs: 4000 }).catch(() => ({})),
+        api("/wb-booking/status", { timeoutMs: 4000 }).catch(() => null),
+        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=100`, { timeoutMs: 7000 }).catch(() => null),
+        api(`/operations/summary?platform=${requestedPlatform}`, { timeoutMs: 7000 }).catch(() => null),
       ]);
       if (requestId !== refreshRequestSeq.current) return;
       if (r.status === "fulfilled" && r.value) setReviews(asList(r.value));
@@ -450,7 +450,7 @@ function App() {
     const requestedPlatform = normPlatform(platformOverride || platform);
     if (show) setMessage("Обновляю каталог товаров…");
     try {
-      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=0`);
+      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=500`, { timeoutMs: 10000 });
       if (requestId !== productsRequestSeq.current) return;
       const rows = (data.items || []).filter(row => rowMatchesPlatform(row, requestedPlatform));
       setProducts(rows);
