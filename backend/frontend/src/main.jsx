@@ -237,7 +237,7 @@ function App() {
   const localMetrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
   const metrics = useMemo(() => {
     const c = diagnostics?.counts;
-    if (platform === "ALL" && c) {
+    if (c) {
       const reviewsTotal = Number(c.reviews_total || 0);
       const questionsTotal = Number(c.questions_total || 0);
       const reviewsUnanswered = Number(c.reviews_unanswered || 0);
@@ -287,7 +287,7 @@ function App() {
 
     async function fastDiagnostics() {
       try {
-        const data = await api("/system/dashboard").catch(() => api("/system/diagnostics").catch(() => api("/system/status")));
+        const data = await api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api("/system/diagnostics").catch(() => api("/system/status"))));
         if (alive && data) setDiagnostics(prev => preserveCountsPayload(prev, data));
       } catch (e) {
         console.warn("fast diagnostics failed", e);
@@ -411,7 +411,7 @@ function App() {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
         api("/reviews"),
         api("/questions"),
-        api("/system/dashboard").catch(() => api("/system/diagnostics").catch(() => api("/system/status"))),
+        api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api("/system/diagnostics").catch(() => api("/system/status")))),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
