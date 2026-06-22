@@ -297,3 +297,80 @@ try:
 except Exception as _karatov_dashboard_guard_error:
     print("[emergency_dashboard_middleware] disabled:", _karatov_dashboard_guard_error)
 
+# KARATOV_EMERGENCY_SYSTEM_ENDPOINTS_MIDDLEWARE_V2
+# Temporary safety guard: frontend startup endpoints must never block page refresh.
+try:
+    from datetime import datetime as _KaratovDateTime, timezone as _KaratovTimezone
+    from fastapi.responses import JSONResponse as _KaratovJSONResponseV2
+
+    def _karatov_empty_counts_v2(platform="ALL"):
+        return {
+            "reviews_total": 0,
+            "questions_total": 0,
+            "communications_total": 0,
+            "reviews_unanswered": 0,
+            "questions_unanswered": 0,
+            "needs_response": 0,
+            "ready_to_publish": 0,
+            "high_risk": 0,
+            "no_text_reviews": 0,
+            "avg_rating": None,
+            "products_total": None,
+            "quality_attention": None,
+            "operations_total": None,
+            "operations_by_type": {},
+        }
+
+    def _karatov_platform_v2(value):
+        value = (value or "ALL").upper()
+        if value in {"WILDBERRIES", "WILDBERRY", "ВБ"}:
+            return "WB"
+        if value in {"OZON.RU", "ОЗОН"}:
+            return "OZON"
+        if value in {"YANDEX", "YANDEX_MARKET", "ЯМ", "ЯНДЕКС"}:
+            return "YM"
+        if value in {"ALL", "WB", "OZON", "YM"}:
+            return value
+        return value
+
+    @app.middleware("http")
+    async def _karatov_emergency_system_endpoints_middleware_v2(request, call_next):
+        path = request.url.path
+
+        if path in {"/system/dashboard", "/system/diagnostics"}:
+            platform = _karatov_platform_v2(request.query_params.get("platform"))
+            now = _KaratovDateTime.now(_KaratovTimezone.utc).isoformat()
+
+            return _KaratovJSONResponseV2({
+                "ok": True,
+                "status": "ok",
+                "platform": platform,
+                "generated_at": now,
+                "source": "emergency_system_middleware_v2",
+                "counts": _karatov_empty_counts_v2(platform),
+                "diagnostics": {
+                    "mode": "emergency_lightweight",
+                    "message": "Heavy live diagnostics/dashboard are temporarily disabled to prevent UI refresh blocking.",
+                    "marketplace": platform,
+                    "last_successful_snapshot": None,
+                    "refresh_state": "disabled_until_rc164_cached_dashboard"
+                },
+                "sync": {
+                    "wb": {"status": "unknown"},
+                    "ozon": {"status": "unknown"},
+                    "ym": {"status": "not_connected"}
+                }
+            })
+
+        if path == "/system/status":
+            return _KaratovJSONResponseV2({
+                "ok": True,
+                "status": "ok",
+                "source": "emergency_system_middleware_v2",
+                "generated_at": _KaratovDateTime.now(_KaratovTimezone.utc).isoformat()
+            })
+
+        return await call_next(request)
+except Exception as _karatov_system_guard_error_v2:
+    print("[emergency_system_middleware_v2] disabled:", _karatov_system_guard_error_v2)
+
