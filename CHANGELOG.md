@@ -101,3 +101,11 @@
 - Operations list is paginated with `total`, `offset`, `limit`, `items`.
 - Product Summary / Quality Hub backend source caps removed where `500` was acting as source-of-truth limit.
 - Unsupported Operations document types are explicitly marked `not_connected`; fake rows remain forbidden.
+
+## RC1.6.5 — Web/Worker Foundation
+- Removed background sync loops from FastAPI lifespan to protect web responsiveness.
+- Added Redis-backed job queue foundation and worker entrypoint.
+- Added SyncJob, SyncCursor and DashboardSnapshot models.
+- Rebuilt /system/dashboard as real fast SQL counters.
+- Kept /system/diagnostics lightweight.
+- Added frontend request timeouts and limited reviews/questions loading.

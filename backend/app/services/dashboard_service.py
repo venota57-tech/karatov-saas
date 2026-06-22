@@ -55,108 +55,132 @@ def _where(platform: str, extra: str | None = None) -> str:
     return " WHERE " + " AND ".join(parts) if parts else ""
 
 
-def _set_fast_timeout(conn) -> None:
+def _timeout(conn) -> None:
     if engine.dialect.name == "postgresql":
         conn.execute(text("SET statement_timeout TO 2500"))
         conn.execute(text("SET lock_timeout TO 1000"))
 
 
-def _scalar(sql: str, default: Any = 0) -> Any:
+def _scalar(conn, sql: str, default: Any = 0) -> Any:
     try:
-        with engine.connect() as conn:
-            _set_fast_timeout(conn)
-            return conn.execute(text(sql)).scalar()
+        return conn.execute(text(sql)).scalar()
     except Exception:
         return default
 
 
-def _count(table: str, platform: str, extra: str | None = None) -> int:
-    value = _scalar(f"SELECT COUNT(id) FROM {table}{_where(platform, extra)}", 0)
+def _count(conn, table: str, platform: str, extra: str | None = None) -> int:
+    value = _scalar(conn, f"SELECT COUNT(id) FROM {table}{_where(platform, extra)}", 0)
     try:
         return int(value or 0)
     except Exception:
         return 0
 
 
-def _avg_rating(platform: str) -> float | None:
-    value = _scalar(f"SELECT AVG(rating) FROM reviews{_where(platform, 'rating IS NOT NULL')}", None)
+def _avg_rating(conn, platform: str) -> float | None:
+    value = _scalar(conn, f"SELECT AVG(rating) FROM reviews{_where(platform, 'rating IS NOT NULL')}", None)
     try:
         return round(float(value), 2) if value is not None else None
     except Exception:
         return None
 
 
-def _products_total(platform: str) -> int | None:
+def _products_total(conn, platform: str) -> int | None:
     if _platform(platform) == "YM":
         return 0
-
-    rw = _where(platform)
-    qw = _where(platform)
-    sql = f"""
-    SELECT COUNT(*) FROM (
-      SELECT DISTINCT COALESCE(NULLIF(sku, ''), NULLIF(product_name, '')) AS product_key FROM reviews{rw}
-      UNION
-      SELECT DISTINCT COALESCE(NULLIF(sku, ''), NULLIF(product_name, '')) AS product_key FROM questions{qw}
-    ) x
-    WHERE product_key IS NOT NULL
-    """
-    value = _scalar(sql, None)
+    extra = "sku IS NOT NULL AND sku <> ''"
+    extra = "sku IS NOT NULL AND sku <> ''"
+    value = _scalar(conn, f"SELECT COUNT(DISTINCT sku) FROM rating_snapshots{_where(platform, extra)}", None)
     try:
         return int(value) if value is not None else None
     except Exception:
         return None
 
 
+def _ym_payload() -> dict[str, Any]:
+    counts = {
+        "reviews_total": 0,
+        "questions_total": 0,
+        "communications_total": 0,
+        "reviews_unanswered": 0,
+        "questions_unanswered": 0,
+        "needs_response": 0,
+        "ready_to_publish": 0,
+        "high_risk": 0,
+        "no_text_reviews": 0,
+        "avg_rating": None,
+        "products_total": 0,
+        "quality_attention": 0,
+        "operations_total": 0,
+        "operations_by_type": {},
+    }
+    return {
+        "ok": True,
+        "status": "not_connected",
+        "platform": "YM",
+        "generated_at": _now(),
+        "source": "server_fast_counts",
+        "marketplace_state": "not_connected",
+        "counts": counts,
+    }
+
+
 def build_dashboard(db=None, platform: str | None = "ALL") -> dict[str, Any]:
     p = _platform(platform)
 
     if p == "YM":
-        counts = {
-            "reviews_total": 0,
-            "questions_total": 0,
-            "communications_total": 0,
-            "reviews_unanswered": 0,
-            "questions_unanswered": 0,
-            "needs_response": 0,
-            "ready_to_publish": 0,
-            "high_risk": 0,
-            "no_text_reviews": 0,
-            "avg_rating": None,
-            "products_total": 0,
-            "quality_attention": 0,
-            "operations_total": 0,
-            "operations_by_type": {},
-        }
+        return _ym_payload()
+
+    try:
+        with engine.connect() as conn:
+            _timeout(conn)
+
+            reviews_total = _count(conn, "reviews", p)
+            questions_total = _count(conn, "questions", p)
+            reviews_unanswered = _count(conn, "reviews", p, "operational_status = 'needs_response'")
+            questions_unanswered = _count(conn, "questions", p, "operational_status = 'needs_response'")
+
+            ready_expr = "status IN (" + ", ".join("'" + x + "'" for x in READY_STATUSES) + ")"
+            ready_to_publish = _count(conn, "reviews", p, ready_expr) + _count(conn, "questions", p, ready_expr)
+
+            high_risk = _count(conn, "reviews", p, "ai_risk_level = 'high'") + _count(conn, "questions", p, "ai_risk_level = 'high'")
+
+            no_text_reviews = 0
+            if p in {"ALL", "OZON"}:
+                no_text_reviews = _count(
+                    conn,
+                    "reviews",
+                    "OZON",
+                    "operational_status = 'no_text_rating' OR ((text IS NULL OR text = '') AND (pros IS NULL OR pros = '') AND (cons IS NULL OR cons = ''))",
+                )
+
+            products_total = _products_total(conn, p)
+            avg_rating = _avg_rating(conn, p)
+
+    except Exception as exc:
         return {
-            "ok": True,
-            "status": "not_connected",
+            "ok": False,
+            "status": "degraded",
             "platform": p,
             "generated_at": _now(),
-            "source": "server_fast_counts",
-            "marketplace_state": "not_connected",
-            "counts": counts,
+            "source": "server_fast_counts_error",
+            "error": str(exc),
+            "counts": {
+                "reviews_total": None,
+                "questions_total": None,
+                "communications_total": None,
+                "reviews_unanswered": None,
+                "questions_unanswered": None,
+                "needs_response": None,
+                "ready_to_publish": None,
+                "high_risk": None,
+                "no_text_reviews": None,
+                "avg_rating": None,
+                "products_total": None,
+                "quality_attention": None,
+                "operations_total": None,
+                "operations_by_type": {},
+            },
         }
-
-    reviews_total = _count("reviews", p)
-    questions_total = _count("questions", p)
-    reviews_unanswered = _count("reviews", p, "operational_status = 'needs_response'")
-    questions_unanswered = _count("questions", p, "operational_status = 'needs_response'")
-
-    ready_expr = "status IN (" + ", ".join("'" + x + "'" for x in READY_STATUSES) + ")"
-    ready_to_publish = _count("reviews", p, ready_expr) + _count("questions", p, ready_expr)
-
-    high_risk = _count("reviews", p, "ai_risk_level = 'high'") + _count("questions", p, "ai_risk_level = 'high'")
-
-    no_text_reviews = 0
-    if p in {"ALL", "OZON"}:
-        no_text_reviews = _count(
-            "reviews",
-            "OZON",
-            "operational_status = 'no_text_rating' OR ((text IS NULL OR text = '') AND (pros IS NULL OR pros = '') AND (cons IS NULL OR cons = ''))",
-        )
-
-    products_total = _products_total(p)
-    quality_attention = high_risk + no_text_reviews
 
     counts = {
         "reviews_total": reviews_total,
@@ -168,9 +192,9 @@ def build_dashboard(db=None, platform: str | None = "ALL") -> dict[str, Any]:
         "ready_to_publish": ready_to_publish,
         "high_risk": high_risk,
         "no_text_reviews": no_text_reviews,
-        "avg_rating": _avg_rating(p),
+        "avg_rating": avg_rating,
         "products_total": products_total,
-        "quality_attention": quality_attention,
+        "quality_attention": high_risk + no_text_reviews,
         "operations_total": None,
         "operations_by_type": {},
     }
@@ -181,9 +205,9 @@ def build_dashboard(db=None, platform: str | None = "ALL") -> dict[str, Any]:
         "platform": p,
         "generated_at": _now(),
         "source": "server_fast_counts",
-        "marketplace_state": "connected" if p in {"ALL", "WB", "OZON"} else "unknown",
+        "marketplace_state": "connected",
         "counts": counts,
-        "note": "Dashboard uses real fast SQL counters with DB statement timeout. Heavy Product Summary, Quality Hub and Operations load separately.",
+        "note": "Real dashboard counters are calculated by fast SQL COUNT queries. Heavy sync and enrichment run in worker.",
     }
 
 

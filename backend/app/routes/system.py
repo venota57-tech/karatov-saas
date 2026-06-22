@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+
 from ..config import settings
 from ..database import run_lightweight_migrations
 from ..services.dashboard_service import build_dashboard, refresh_dashboard
@@ -46,13 +47,14 @@ def diagnostics():
             "wb_api_token": bool(settings.wb_api_token),
             "ozon_client_id": bool(settings.ozon_client_id),
             "ozon_api_key": bool(settings.ozon_api_key),
+            "redis_url": bool(settings.redis_url),
         },
         "sync": {
             "wb": get_sync_status() if get_sync_status else None,
             "ozon": get_ozon_status() if get_ozon_status else None,
             "ym": {"status": "not_connected"},
         },
-        "note": "Diagnostics is intentionally lightweight: no migrations, no live DB aggregates, no sync jobs.",
+        "note": "Diagnostics is lightweight: no migrations, no DB aggregates, no sync jobs.",
     }
 
 

@@ -17,3 +17,11 @@
 - [ ] `python3 -m compileall backend/app` passes.
 - [ ] `npm run build` passes.
 - [ ] `import app.main` passes.
+
+## RC1.6.5 Web/Worker Foundation
+- FastAPI lifespan must not start WB/Ozon/autopublish/booking/dashboard infinite loops.
+- /health must stay DB-free.
+- /system/status and /system/diagnostics must stay lightweight.
+- /system/dashboard returns real fast DB counters and never starts sync jobs.
+- Heavy WB/Ozon/Operations/Product Summary refresh must run through worker/queue.
+- Worker command: python -m app.worker.

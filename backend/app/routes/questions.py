@@ -43,7 +43,9 @@ def list_questions(status: str | None = None, platform: str | None = None, answe
     safe_offset = max(int(offset or 0), 0)
     safe_limit = min(max(int(limit or 200), 1), 500)
     safe_offset = max(int(offset or 0), 0)
-    return q.order_by(desc(Question.created_at_marketplace), desc(Question.created_at)).offset(safe_offset).limit(safe_limit).offset(safe_offset).limit(safe_limit).all()
+    safe_limit = min(max(int(limit or 200), 1), 500)
+    safe_offset = max(int(offset or 0), 0)
+    return q.order_by(desc(Question.created_at_marketplace), desc(Question.created_at)).offset(safe_offset).limit(safe_limit).offset(safe_offset).limit(safe_limit).offset(safe_offset).limit(safe_limit).all()
 
 @router.post('/{question_id}/generate', response_model=QuestionOut)
 def generate_question_answer(question_id: int, db: Session = Depends(get_db)):

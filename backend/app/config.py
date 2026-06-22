@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_password: str = "change-me"
 
     database_url: str = "sqlite:///./cxhub.db"
+    redis_url: str = ""
 
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"

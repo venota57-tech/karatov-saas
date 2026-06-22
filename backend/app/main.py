@@ -43,54 +43,18 @@ except Exception as e:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    tasks = []
+    """
+    RC1.6.5 Web/Worker Foundation.
 
-    async def delayed_background_start():
-        await asyncio.sleep(5)
+    Web process must stay HTTP-first:
+    - no WB/Ozon/autopublish/booking/dashboard infinite loops in startup;
+    - no sync jobs in FastAPI lifespan;
+    - no DB migration blocking service readiness.
 
-        async def run_migrations_safe():
-            try:
-                await asyncio.wait_for(asyncio.to_thread(run_lightweight_migrations), timeout=20)
-                print("[startup] DB migrations completed")
-            except Exception as e:
-                print(f"[startup] DB migration skipped/error: {e}")
-
-        tasks.append(asyncio.create_task(run_migrations_safe()))
-
-        await asyncio.sleep(10)
-        if wb_auto_sync_loop and (getattr(settings, "wb_api_token", "") or getattr(settings, "wb_api_key", "")):
-            tasks.append(asyncio.create_task(wb_auto_sync_loop()))
-            print("[startup] WB auto sync loop started safely")
-
-        await asyncio.sleep(15)
-        if ozon_auto_sync_loop and settings.ozon_client_id and settings.ozon_api_key:
-            tasks.append(asyncio.create_task(ozon_auto_sync_loop()))
-            print("[startup] Ozon auto sync loop started safely")
-
-        await asyncio.sleep(10)
-        if autopublish_loop:
-            tasks.append(asyncio.create_task(autopublish_loop()))
-            print("[startup] autopublish loop started safely")
-
-        await asyncio.sleep(10)
-        if booking_auto_check_loop:
-            tasks.append(asyncio.create_task(booking_auto_check_loop()))
-            print("[startup] Slot Hunter auto-check loop started safely")
-
-    tasks.append(asyncio.create_task(delayed_background_start()))
-    try:
-        from app.services.dashboard_snapshot_service import start_dashboard_snapshot_loop
-        asyncio.create_task(start_dashboard_snapshot_loop())
-        print("[startup] dashboard snapshot loop started safely")
-    except Exception as e:
-        print(f"[startup] dashboard snapshot loop unavailable: {e}")
-
-    print("[startup] port-first stable mode: API opens before background jobs")
-
+    Heavy tasks are executed by app.worker through Redis queue.
+    """
+    print("[startup] HTTP-first mode: background loops disabled in web lifespan")
     yield
-
-    for task in tasks:
-        task.cancel()
 
 
 app = FastAPI(title="KARATOV CX Hub", lifespan=lifespan)
@@ -108,6 +72,7 @@ def include_router_safe(module_path: str):
 
 for route in [
     "app.routes.system",
+    "app.routes.jobs",
     "app.routes.reviews",
     "app.routes.questions",
     "app.routes.reports",
