@@ -294,7 +294,7 @@ function App() {
 
     async function fastDiagnostics() {
       try {
-        const data = await api(`/system/dashboard?platform=${encodeURIComponent(requestedPlatform || normPlatform(platform || "ALL"))}`, { timeoutMs: 6000 }).catch(() => ({ ok: false, platform: requestedPlatform || normPlatform(platform || "ALL"), counts: null, source: "frontend_dashboard_timeout" }));
+        const data = await api(`/system/dashboard?platform=${encodeURIComponent(normPlatform(platform || "ALL"))}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: normPlatform(platform || "ALL"), counts: null, source: "frontend_dashboard_timeout" }));
         if (alive && data) setDiagnostics(prev => preserveCountsPayload(prev, data));
       } catch (e) {
         console.warn("fast diagnostics failed", e);
@@ -418,7 +418,7 @@ function App() {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
         api(`/reviews?platform=${requestedPlatform}&limit=200`).catch(() => []),
         api(`/questions?platform=${requestedPlatform}&limit=200`).catch(() => []),
-        api(`/system/dashboard?platform=${encodeURIComponent(requestedPlatform || normPlatform(platform || "ALL"))}`, { timeoutMs: 6000 }).catch(() => ({ ok: false, platform: requestedPlatform || normPlatform(platform || "ALL"), counts: null, source: "frontend_dashboard_timeout" })),
+        api(`/system/dashboard?platform=${encodeURIComponent(requestedPlatform)}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: requestedPlatform, counts: null, source: "frontend_dashboard_timeout" })),
         api("/ops/sync-history", { timeoutMs: 4000 }).catch(() => null),
         api("/ops/publish-history", { timeoutMs: 4000 }).catch(() => null),
         api("/settings/automation-rules", { timeoutMs: 4000 }).catch(() => ({})),
@@ -450,7 +450,7 @@ function App() {
     const requestedPlatform = normPlatform(platformOverride || platform);
     if (show) setMessage("Обновляю каталог товаров…");
     try {
-      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=500`, { timeoutMs: 10000 });
+      const data = await api(`/ops/product-summary?platform=${requestedPlatform}&limit=5000`, { timeoutMs: 10000 });
       if (requestId !== productsRequestSeq.current) return;
       const rows = (data.items || []).filter(row => rowMatchesPlatform(row, requestedPlatform));
       setProducts(rows);

@@ -109,3 +109,9 @@
 - Rebuilt /system/dashboard as real fast SQL counters.
 - Kept /system/diagnostics lightweight.
 - Added frontend request timeouts and limited reviews/questions loading.
+
+## RC1.6.5 Data Restore
+- Restored priority /reviews and /questions routes before included routers.
+- Fixed dashboard product count to use real reviews/questions product keys.
+- Raised Product Summary frontend load from 500 to 5000 for current full catalog visibility.
+- Fixed startup dashboard request that referenced requestedPlatform outside refreshAll.

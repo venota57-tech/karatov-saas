@@ -25,3 +25,9 @@
 - /system/dashboard returns real fast DB counters and never starts sync jobs.
 - Heavy WB/Ozon/Operations/Product Summary refresh must run through worker/queue.
 - Worker command: python -m app.worker.
+
+## RC1.6.5 Data Restore
+- Restored priority /reviews and /questions routes before included routers.
+- Fixed dashboard product count to use real reviews/questions product keys.
+- Raised Product Summary frontend load from 500 to 5000 for current full catalog visibility.
+- Fixed startup dashboard request that referenced requestedPlatform outside refreshAll.

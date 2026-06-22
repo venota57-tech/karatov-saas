@@ -87,9 +87,25 @@ def _avg_rating(conn, platform: str) -> float | None:
 def _products_total(conn, platform: str) -> int | None:
     if _platform(platform) == "YM":
         return 0
-    extra = "sku IS NOT NULL AND sku <> ''"
-    extra = "sku IS NOT NULL AND sku <> ''"
-    value = _scalar(conn, f"SELECT COUNT(DISTINCT sku) FROM rating_snapshots{_where(platform, extra)}", None)
+
+    rw = _where(platform)
+    qw = _where(platform)
+    sql = f"""
+    SELECT COUNT(*) FROM (
+      SELECT DISTINCT
+        UPPER(COALESCE(platform, '')) || '::' ||
+        COALESCE(NULLIF(sku, ''), NULLIF(product_name, '')) AS product_key
+      FROM reviews{rw}
+      UNION
+      SELECT DISTINCT
+        UPPER(COALESCE(platform, '')) || '::' ||
+        COALESCE(NULLIF(sku, ''), NULLIF(product_name, '')) AS product_key
+      FROM questions{qw}
+    ) x
+    WHERE product_key IS NOT NULL
+      AND product_key <> '::'
+    """
+    value = _scalar(conn, sql, None)
     try:
         return int(value) if value is not None else None
     except Exception:
