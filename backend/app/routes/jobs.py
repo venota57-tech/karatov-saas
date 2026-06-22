@@ -15,7 +15,15 @@ def jobs_status(limit: int = 50):
 
 @router.post("/enqueue")
 def jobs_enqueue(job_type: str, platform: str | None = None, block: str | None = None):
-    allowed = {"dashboard_refresh", "ozon_full_sync", "ozon_block"}
+    allowed = {
+        "dashboard_refresh",
+        "ozon_full_sync",
+        "ozon_block",
+        "wb_answer_enrichment",
+        "ozon_answer_enrichment",
+        "answer_enrichment_all",
+        "marketplace_os_refresh",
+    }
     if job_type not in allowed:
         raise HTTPException(400, f"Unsupported job_type: {job_type}")
     if job_type == "ozon_block" and not block:

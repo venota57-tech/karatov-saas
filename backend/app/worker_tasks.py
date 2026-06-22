@@ -40,6 +40,30 @@ def run_sync_job(sync_job_id: int, job_type: str, platform: str | None = None, b
             result = {"ALL": build_dashboard(platform="ALL"), "WB": build_dashboard(platform="WB"), "OZON": build_dashboard(platform="OZON"), "YM": build_dashboard(platform="YM")}
             _mark(db, sync_job_id, "success", result=result)
             return result
+
+        if job_type == "marketplace_os_refresh":
+            result = {"dashboard": {"ALL": build_dashboard(platform="ALL"), "WB": build_dashboard(platform="WB"), "OZON": build_dashboard(platform="OZON"), "YM": build_dashboard(platform="YM")}, "note": "Marketplace OS refresh reads server totals; heavy external sync remains explicit."}
+            _mark(db, sync_job_id, "success", result=result)
+            return result
+
+        if job_type == "wb_answer_enrichment":
+            from app.services.answer_enrichment_service import enrich_wb_published_answers
+            result = enrich_wb_published_answers(db, limit=int((payload or {}).get("limit", 1000)))
+            _mark(db, sync_job_id, "success" if result.get("ok") else "failed", result=result, error=result.get("error"))
+            return result
+
+        if job_type == "ozon_answer_enrichment":
+            from app.services.answer_enrichment_service import enrich_ozon_published_answers
+            result = enrich_ozon_published_answers(db, limit=int((payload or {}).get("limit", 1000)))
+            _mark(db, sync_job_id, "success" if result.get("ok") else "failed", result=result, error=result.get("error"))
+            return result
+
+        if job_type == "answer_enrichment_all":
+            from app.services.answer_enrichment_service import enrich_all_published_answers
+            result = enrich_all_published_answers(db, limit=int((payload or {}).get("limit", 1000)))
+            _mark(db, sync_job_id, "success", result=result)
+            return result
+
         if job_type == "ozon_full_sync":
             from app.services.ozon_sync_service import sync_ozon_all
             result = asyncio.run(sync_ozon_all(db))

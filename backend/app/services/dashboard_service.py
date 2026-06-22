@@ -33,11 +33,11 @@ def _aliases(platform: str) -> list[str]:
     if platform == "ALL":
         return []
     if platform == "WB":
-        return ["WB", "WILDBERRIES", "WILDBERRY", "ВБ", "wildberries"]
+        return ["WB", "WILDBERRIES", "WILDBERRY", "ВБ"]
     if platform == "OZON":
-        return ["OZON", "OZON.RU", "ОЗОН", "ozon"]
+        return ["OZON", "OZON.RU", "ОЗОН"]
     if platform == "YM":
-        return ["YM", "YANDEX", "YANDEX_MARKET", "ЯМ", "ЯНДЕКС", "yandex"]
+        return ["YM", "YANDEX", "YANDEX_MARKET", "ЯМ", "ЯНДЕКС"]
     return [platform]
 
 
@@ -57,7 +57,7 @@ def _where(platform: str, extra: str | None = None) -> str:
 
 def _timeout(conn) -> None:
     if engine.dialect.name == "postgresql":
-        conn.execute(text("SET statement_timeout TO 2500"))
+        conn.execute(text("SET statement_timeout TO 3500"))
         conn.execute(text("SET lock_timeout TO 1000"))
 
 
@@ -87,10 +87,8 @@ def _avg_rating(conn, platform: str) -> float | None:
 def _products_total(conn, platform: str) -> int | None:
     if _platform(platform) == "YM":
         return 0
-
     rw = _where(platform)
     qw = _where(platform)
-
     sql = f"""
     SELECT COUNT(*) FROM (
       SELECT DISTINCT
@@ -113,91 +111,58 @@ def _products_total(conn, platform: str) -> int | None:
         return None
 
 
+def _operations_total(conn, platform: str) -> int | None:
+    value = _scalar(conn, f"SELECT COUNT(id) FROM marketplace_operations{_where(platform)}", None)
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _ym_payload() -> dict[str, Any]:
+    counts = {
+        "reviews_total": 0,
+        "questions_total": 0,
+        "communications_total": 0,
+        "reviews_unanswered": 0,
+        "questions_unanswered": 0,
+        "needs_response": 0,
+        "ready_to_publish": 0,
+        "high_risk": 0,
+        "no_text_reviews": 0,
+        "avg_rating": None,
+        "products_total": 0,
+        "quality_attention": 0,
+        "operations_total": 0,
+        "operations_by_type": {},
+    }
+    return {"ok": True, "status": "not_connected", "platform": "YM", "generated_at": _now(), "source": "server_totals_no_false_ceiling", "marketplace_state": "not_connected", "counts": counts}
+
+
 def build_dashboard(db=None, platform: str | None = "ALL") -> dict[str, Any]:
     p = _platform(platform)
-
     if p == "YM":
         return _ym_payload()
-
     try:
         with engine.connect() as conn:
             _timeout(conn)
-
             reviews_total = _count(conn, "reviews", p)
             questions_total = _count(conn, "questions", p)
             reviews_unanswered = _count(conn, "reviews", p, "operational_status = 'needs_response'")
             questions_unanswered = _count(conn, "questions", p, "operational_status = 'needs_response'")
-
             ready_expr = "status IN (" + ", ".join("'" + x + "'" for x in READY_STATUSES) + ")"
             ready_to_publish = _count(conn, "reviews", p, ready_expr) + _count(conn, "questions", p, ready_expr)
-
             high_risk = _count(conn, "reviews", p, "ai_risk_level = 'high'") + _count(conn, "questions", p, "ai_risk_level = 'high'")
-
             no_text_reviews = 0
             if p in {"ALL", "OZON"}:
-                no_text_reviews = _count(
-                    conn,
-                    "reviews",
-                    "OZON",
-                    "operational_status = 'no_text_rating' OR ((text IS NULL OR text = '') AND (pros IS NULL OR pros = '') AND (cons IS NULL OR cons = ''))",
-                )
-
+                no_text_reviews = _count(conn, "reviews", "OZON", "operational_status = 'no_text_rating' OR ((text IS NULL OR text = '') AND (pros IS NULL OR pros = '') AND (cons IS NULL OR cons = ''))")
             products_total = _products_total(conn, p)
             avg_rating = _avg_rating(conn, p)
-
+            operations_total = _operations_total(conn, p)
     except Exception as exc:
-        return {
-            "ok": False,
-            "status": "degraded",
-            "platform": p,
-            "generated_at": _now(),
-            "source": "server_fast_counts_error",
-            "error": str(exc),
-            "counts": {
-                "reviews_total": None,
-                "questions_total": None,
-                "communications_total": None,
-                "reviews_unanswered": None,
-                "questions_unanswered": None,
-                "needs_response": None,
-                "ready_to_publish": None,
-                "high_risk": None,
-                "no_text_reviews": None,
-                "avg_rating": None,
-                "products_total": None,
-                "quality_attention": None,
-                "operations_total": None,
-                "operations_by_type": {},
-            },
-        }
-
-    counts = {
-        "reviews_total": reviews_total,
-        "questions_total": questions_total,
-        "communications_total": reviews_total + questions_total,
-        "reviews_unanswered": reviews_unanswered,
-        "questions_unanswered": questions_unanswered,
-        "needs_response": reviews_unanswered + questions_unanswered,
-        "ready_to_publish": ready_to_publish,
-        "high_risk": high_risk,
-        "no_text_reviews": no_text_reviews,
-        "avg_rating": avg_rating,
-        "products_total": products_total,
-        "quality_attention": high_risk + no_text_reviews,
-        "operations_total": None,
-        "operations_by_type": {},
-    }
-
-    return {
-        "ok": True,
-        "status": "ok",
-        "platform": p,
-        "generated_at": _now(),
-        "source": "server_fast_counts",
-        "marketplace_state": "connected",
-        "counts": counts,
-        "note": "Real dashboard counters are calculated by fast SQL COUNT queries. Heavy sync and enrichment run in worker.",
-    }
+        return {"ok": False, "status": "degraded", "platform": p, "generated_at": _now(), "source": "server_totals_error", "error": str(exc), "counts": {"reviews_total": None, "questions_total": None, "communications_total": None, "reviews_unanswered": None, "questions_unanswered": None, "needs_response": None, "ready_to_publish": None, "high_risk": None, "no_text_reviews": None, "avg_rating": None, "products_total": None, "quality_attention": None, "operations_total": None, "operations_by_type": {}}}
+    counts = {"reviews_total": reviews_total, "questions_total": questions_total, "communications_total": reviews_total + questions_total, "reviews_unanswered": reviews_unanswered, "questions_unanswered": questions_unanswered, "needs_response": reviews_unanswered + questions_unanswered, "ready_to_publish": ready_to_publish, "high_risk": high_risk, "no_text_reviews": no_text_reviews, "avg_rating": avg_rating, "products_total": products_total, "quality_attention": high_risk + no_text_reviews, "operations_total": operations_total, "operations_by_type": {}}
+    return {"ok": True, "status": "ok", "platform": p, "generated_at": _now(), "source": "server_totals_no_false_ceiling", "marketplace_state": "connected", "counts": counts, "note": "Business totals are calculated server-side. UI pagination is not a business ceiling. Heavy sync and answer enrichment run in worker."}
 
 
 def build_dashboard_snapshot(db=None, platform: str | None = "ALL") -> dict[str, Any]:
@@ -205,10 +170,4 @@ def build_dashboard_snapshot(db=None, platform: str | None = "ALL") -> dict[str,
 
 
 def refresh_dashboard(db=None) -> dict[str, Any]:
-    return {
-        "ok": True,
-        "status": "noop",
-        "source": "server_fast_counts",
-        "generated_at": _now(),
-        "message": "Dashboard is calculated by fast counters on demand; no blocking refresh job is required.",
-    }
+    return {"ok": True, "status": "noop", "source": "server_totals_no_false_ceiling", "generated_at": _now(), "message": "Dashboard uses server totals; heavy refresh runs through worker jobs."}

@@ -44,16 +44,11 @@ except Exception as e:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    RC1.6.5 Web/Worker Foundation.
-
-    Web process must stay HTTP-first:
-    - no WB/Ozon/autopublish/booking/dashboard infinite loops in startup;
-    - no sync jobs in FastAPI lifespan;
-    - no DB migration blocking service readiness.
-
-    Heavy tasks are executed by app.worker through Redis queue.
+    RC1.7.0 Marketplace OS.
+    Web serves UI/API only. Heavy WB/Ozon/Operations/Product/Quality jobs
+    must run through worker/queue, never through web startup.
     """
-    print("[startup] HTTP-first mode: background loops disabled in web lifespan")
+    print("[startup] HTTP-first Marketplace OS mode: background loops are disabled in web lifespan")
     yield
 
 
@@ -69,9 +64,7 @@ def include_router_safe(module_path: str):
     except Exception as e:
         print(f"[router] skipped {module_path}: {e}")
 
-
-
-# KARATOV_PRIORITY_DATA_ROUTES_RC165_FIXED
+# KARATOV_MARKETPLACE_OS_PRIORITY_ROUTES_RC170
 def _karatov_platform_aliases(platform: str | None):
     p = (platform or "ALL").strip().upper()
     if p in {"", "ALL"}:
@@ -93,7 +86,7 @@ def _karatov_filter_platform(q, model, platform: str | None):
 
 
 @app.get("/reviews")
-def reviews_priority_rc165_fixed(
+def reviews_priority_rc170(
     platform: str | None = None,
     status: str | None = None,
     answer_state: str | None = None,
@@ -111,17 +104,13 @@ def reviews_priority_rc165_fixed(
 
     if status and status != "all":
         q = q.filter(Review.status == status)
-
     if source_status:
         q = q.filter(Review.source_status == source_status)
-
     if product:
         like = f"%{product}%"
         q = q.filter((Review.sku.ilike(like)) | (Review.product_name.ilike(like)))
-
     if risk:
         q = q.filter(Review.ai_risk_level == risk)
-
     if response_origin:
         q = q.filter(Review.response_origin == response_origin)
 
@@ -135,18 +124,12 @@ def reviews_priority_rc165_fixed(
 
     safe_limit = min(max(int(limit or 200), 1), 1000)
     safe_offset = max(int(offset or 0), 0)
-
-    rows = (
-        q.order_by(Review.created_at_marketplace.desc(), Review.id.desc())
-        .offset(safe_offset)
-        .limit(safe_limit)
-        .all()
-    )
+    rows = q.order_by(Review.created_at_marketplace.desc(), Review.id.desc()).offset(safe_offset).limit(safe_limit).all()
     return jsonable_encoder(rows)
 
 
 @app.get("/questions")
-def questions_priority_rc165_fixed(
+def questions_priority_rc170(
     platform: str | None = None,
     status: str | None = None,
     answer_state: str | None = None,
@@ -164,17 +147,13 @@ def questions_priority_rc165_fixed(
 
     if status and status != "all":
         q = q.filter(Question.status == status)
-
     if source_status:
         q = q.filter(Question.source_status == source_status)
-
     if product:
         like = f"%{product}%"
         q = q.filter((Question.sku.ilike(like)) | (Question.product_name.ilike(like)))
-
     if risk:
         q = q.filter(Question.ai_risk_level == risk)
-
     if response_origin:
         q = q.filter(Question.response_origin == response_origin)
 
@@ -186,17 +165,12 @@ def questions_priority_rc165_fixed(
 
     safe_limit = min(max(int(limit or 200), 1), 1000)
     safe_offset = max(int(offset or 0), 0)
-
-    rows = (
-        q.order_by(Question.created_at_marketplace.desc(), Question.id.desc())
-        .offset(safe_offset)
-        .limit(safe_limit)
-        .all()
-    )
+    rows = q.order_by(Question.created_at_marketplace.desc(), Question.id.desc()).offset(safe_offset).limit(safe_limit).all()
     return jsonable_encoder(rows)
 
 
 for route in [
+    "app.routes.marketplace_os",
     "app.routes.system",
     "app.routes.jobs",
     "app.routes.reviews",

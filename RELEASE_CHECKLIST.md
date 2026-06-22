@@ -37,3 +37,11 @@
 - Product Summary UI now loads by server-reported total instead of fixed 500/5000 ceilings.
 - Dashboard product count now uses the same reviews/questions source as Product Summary.
 - Removed stale dashboard-count preservation when switching marketplace tabs.
+
+## RC1.7.0 Marketplace OS Business Parity
+- Unified dashboard, product totals, operator work queue, Quality Hub and Operations summary around server-side business totals.
+- Removed false business ceilings: UI pagination is allowed, but totals must come from server aggregation.
+- Added Marketplace OS API endpoints: /marketplace-os/dashboard, /marketplace-os/work-queue, /marketplace-os/quality, /marketplace-os/operations.
+- Added seller-cabinet published answer enrichment service for WB and Ozon.
+- Added worker job types: wb_answer_enrichment, ozon_answer_enrichment, answer_enrichment_all, marketplace_os_refresh.
+- Preserved HTTP-first web startup: no WB/Ozon/autopublish/booking/dashboard loops in FastAPI lifespan.
