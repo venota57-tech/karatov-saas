@@ -3,3 +3,7 @@
 .env
 backend/playwright_profiles/
 .DS_Store
+
+.venv/
+.venv312/
+backend/frontend/dist/

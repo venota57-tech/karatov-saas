@@ -27,6 +27,23 @@ def _platform(value: str | None) -> str | None:
     return str(value).upper()
 
 
+def _platform_values(platform: str | None) -> list[str]:
+    if not platform:
+        return []
+    p = str(platform).upper()
+    if p == "WB":
+        return ["WB", "WILDBERRIES", "WILDBERRY", "ВБ"]
+    if p == "OZON":
+        return ["OZON", "OZON.RU", "ОЗОН"]
+    if p in {"YM", "YANDEX", "YANDEX_MARKET", "ЯМ"}:
+        return ["YM", "YANDEX", "YANDEX_MARKET", "ЯНДЕКС", "ЯМ"]
+    return [p]
+
+
+def _platform_filter(model: Any, platform: str | None):
+    return func.upper(model.platform).in_(_platform_values(platform))
+
+
 def _safe_count(db: Session, model: Any, *filters: Any) -> int:
     try:
         q = db.query(func.count(model.id))
@@ -40,7 +57,7 @@ def _safe_count(db: Session, model: Any, *filters: Any) -> int:
 def _base_query(db: Session, model: Any, platform: str | None):
     q = db.query(model)
     if platform:
-        q = q.filter(model.platform == platform)
+        q = q.filter(_platform_filter(model, platform))
     return q
 
 
@@ -50,7 +67,7 @@ def _count_products(db: Session, platform: str | None) -> int:
         for model in (Review, Question):
             q = db.query(model.platform, model.sku)
             if platform:
-                q = q.filter(model.platform == platform)
+                q = q.filter(_platform_filter(model, platform))
             q = q.filter(model.sku.isnot(None))
             for p, sku in q.all():
                 if sku:
@@ -65,7 +82,7 @@ def _count_quality_attention(db: Session, platform: str | None) -> int:
     try:
         rq = db.query(Review.platform, Review.sku).filter(Review.sku.isnot(None))
         if platform:
-            rq = rq.filter(Review.platform == platform)
+            rq = rq.filter(_platform_filter(Review, platform))
         rq = rq.filter((Review.ai_risk_level == "high") | (Review.rating <= 3))
         for p, sku in rq.all():
             if sku:
@@ -73,7 +90,7 @@ def _count_quality_attention(db: Session, platform: str | None) -> int:
 
         qq = db.query(Question.platform, Question.sku).filter(Question.sku.isnot(None))
         if platform:
-            qq = qq.filter(Question.platform == platform)
+            qq = qq.filter(_platform_filter(Question, platform))
         qq = qq.filter(Question.ai_risk_level == "high")
         for p, sku in qq.all():
             if sku:
@@ -87,7 +104,7 @@ def _avg_rating(db: Session, platform: str | None) -> float | None:
     try:
         q = db.query(func.avg(Review.rating)).filter(Review.rating.isnot(None))
         if platform:
-            q = q.filter(Review.platform == platform)
+            q = q.filter(_platform_filter(Review, platform))
         value = q.scalar()
         return round(float(value), 2) if value is not None else None
     except Exception:
@@ -103,7 +120,7 @@ def _operations_counts(db: Session, platform: str | None) -> tuple[int, dict[str
     try:
         q = db.query(MarketplaceOperation)
         if platform:
-            q = q.filter(MarketplaceOperation.platform == platform)
+            q = q.filter(_platform_filter(MarketplaceOperation, platform))
         total = q.with_entities(func.count(MarketplaceOperation.id)).scalar() or 0
         rows = (
             q.with_entities(MarketplaceOperation.operation_type, func.count(MarketplaceOperation.id))
@@ -165,7 +182,7 @@ def build_dashboard(db: Session, platform: str | None = "ALL") -> dict[str, Any]
 
     no_text_reviews = int(
         review_q.filter(
-            Review.platform == "OZON",
+            _platform_filter(Review, "OZON"),
             (Review.text.is_(None) | (Review.text == "")),
             (Review.pros.is_(None) | (Review.pros == "")),
             (Review.cons.is_(None) | (Review.cons == "")),
