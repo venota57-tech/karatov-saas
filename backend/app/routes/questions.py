@@ -12,7 +12,7 @@ from ..services.publishing_service import publish_question, publish_questions_bu
 router = APIRouter(prefix='/questions', tags=['questions'])
 
 @router.get('')
-def list_questions(status: str | None = None, platform: str | None = None, answer_state: str = 'all', source_status: str | None = None, product: str | None = None, category: str | None = None, risk: str | None = None, response_origin: str | None = None, db: Session = Depends(get_db)):
+def list_questions(status: str | None = None, platform: str | None = None, answer_state: str = 'all', source_status: str | None = None, product: str | None = None, category: str | None = None, risk: str | None = None, response_origin: str | None = None, limit: int = 200, offset: int = 0, db: Session = Depends(get_db)):
     q = db.query(Question)
     if status:
         q = q.filter(Question.status == status)
@@ -39,7 +39,9 @@ def list_questions(status: str | None = None, platform: str | None = None, answe
         q = q.filter(Question.status.in_(['ready_to_review','ready_to_publish','answer_rejected_quality_gate']))
     elif answer_state == 'auto_published':
         q = q.filter(Question.status.in_(['auto_published','published']))
-    return q.order_by(desc(Question.created_at_marketplace), desc(Question.created_at)).all()
+    safe_limit = min(max(int(limit or 200), 1), 500)
+    safe_offset = max(int(offset or 0), 0)
+    return q.order_by(desc(Question.created_at_marketplace), desc(Question.created_at)).offset(safe_offset).limit(safe_limit).all()
 
 @router.post('/{question_id}/generate', response_model=QuestionOut)
 def generate_question_answer(question_id: int, db: Session = Depends(get_db)):

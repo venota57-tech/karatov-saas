@@ -59,12 +59,19 @@ const DEFAULT_ROLE_RIGHTS = {
 };
 
 async function api(path, options = {}) {
-  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-  if (!res.ok) throw new Error(typeof data === "object" ? (data.detail || data.error || JSON.stringify(data)) : data);
-  return data;
+  const { timeoutMs = 25000, ...fetchOptions } = options || {};
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(path, { headers: { "Content-Type": "application/json" }, signal: controller.signal, ...fetchOptions });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    if (!res.ok) throw new Error(typeof data === "object" ? (data.detail || data.error || JSON.stringify(data)) : data);
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function asList(data) {
@@ -287,7 +294,7 @@ function App() {
 
     async function fastDiagnostics() {
       try {
-        const data = await api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api("/system/diagnostics").catch(() => api("/system/status"))));
+        const data = await api(`/system/dashboard?platform=${encodeURIComponent(normPlatform(platform || "ALL"))}`).catch(() => api("/system/status"));
         if (alive && data) setDiagnostics(prev => preserveCountsPayload(prev, data));
       } catch (e) {
         console.warn("fast diagnostics failed", e);
@@ -409,9 +416,9 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api("/reviews"),
-        api("/questions"),
-        api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api(`/system/dashboard?platform=${encodeURIComponent(platform || "ALL")}`).catch(() => api("/system/diagnostics").catch(() => api("/system/status")))),
+        api(`/reviews?platform=${requestedPlatform}&limit=200`).catch(() => []),
+        api(`/questions?platform=${requestedPlatform}&limit=200`).catch(() => []),
+        api(`/system/dashboard?platform=${encodeURIComponent(normPlatform(platform || "ALL"))}`).catch(() => api("/system/status")),
         api("/ops/sync-history").catch(() => null),
         api("/ops/publish-history").catch(() => null),
         api("/settings/automation-rules").catch(() => ({})),
