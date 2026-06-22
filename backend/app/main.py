@@ -79,7 +79,6 @@ async def lifespan(app: FastAPI):
 
     tasks.append(asyncio.create_task(delayed_background_start()))
     try:
-        import asyncio
         from app.services.dashboard_snapshot_service import start_dashboard_snapshot_loop
         asyncio.create_task(start_dashboard_snapshot_loop())
         print("[startup] dashboard snapshot loop started safely")
