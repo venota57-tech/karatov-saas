@@ -1,0 +1,48 @@
+name: KARATOV Marketplace Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "Sync kind: all, ozon, wb, operations, answers, analytics"
+        required: false
+        default: "all"
+  schedule:
+    - cron: "*/30 * * * *"
+
+concurrency:
+  group: karatov-marketplace-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WB_API_KEY: ${{ secrets.WB_API_KEY }}
+      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
+      OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
+      OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GITHUB_SYNC_KIND: ${{ github.event.inputs.kind || 'all' }}
+      GITHUB_SYNC_MAX_OZON_PAGES: "80"
+      GITHUB_SYNC_MAX_WB_CYCLES: "8"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run marketplace sync
+        run: python -m app.github_sync_runner

@@ -61,3 +61,12 @@
 - Ozon review cursors are restored from and saved to SyncCursor so deploys do not restart backfill from the first 1000.
 - Operations rows now separate marketplace_status/cx_workflow_status and stop using meaningless status=new for synced rows.
 - Render blueprint no longer requires paid worker service.
+
+## RC1.7.3 GitHub Actions Sync Runner
+- Replaced unstable long web cron execution with a scheduled GitHub Actions sync runner.
+- Added .github/workflows/marketplace-sync.yml and backend/app/github_sync_runner.py.
+- Ozon reviews now use two passes: latest page for fresh data and persisted backfill cursor for archive/backlog beyond the old 1000-row wall.
+- WB answered/archive page cursors are persisted through SyncCursor across separate GitHub Actions runs.
+- Published answers enrichment is run as part of the scheduled runner.
+- Operations sync is included in the scheduled runner; meaningless operation status=new is migrated to synced/new_to_review.
+- Added /sync-runner/status and /sync-runner/sla with response-speed analytics for reviews and questions.
