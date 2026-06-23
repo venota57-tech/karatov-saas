@@ -33,8 +33,8 @@ jobs:
       WB_AUTO_SYNC_ENABLED: "false"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GITHUB_SYNC_KIND: ${{ github.event.inputs.kind || 'all' }}
-      GITHUB_SYNC_MAX_OZON_PAGES: "80"
-      GITHUB_SYNC_MAX_WB_CYCLES: "8"
+      GITHUB_SYNC_MAX_OZON_PAGES: "40"
+      GITHUB_SYNC_MAX_WB_CYCLES: "6"
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout

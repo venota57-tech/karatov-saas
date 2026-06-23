@@ -70,3 +70,9 @@
 - Published answers enrichment is run as part of the scheduled runner.
 - Operations sync is included in the scheduled runner; meaningless operation status=new is migrated to synced/new_to_review.
 - Added /sync-runner/status and /sync-runner/sla with response-speed analytics for reviews and questions.
+
+## RC1.7.3 Runner DB Resilience
+- GitHub Actions sync runner now uses short-lived DB sessions per Ozon page/WB block/Operations/Answers stage.
+- External Render Postgres SSL drops are retried with engine.dispose and fresh sessions.
+- Failed runner status is persisted through a fresh DB transaction to avoid PendingRollback masking the real error.
+- Ozon backfill remains durable through SyncCursor and continues across runs.
