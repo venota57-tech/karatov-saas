@@ -5,11 +5,3 @@ services:
     buildCommand: pip install -r backend/requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     rootDir: backend
-
-  - type: worker
-    name: karatov-saas-worker
-    env: python
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: python -m app.worker
-    rootDir: backend
-

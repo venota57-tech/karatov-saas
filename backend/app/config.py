@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./cxhub.db"
     redis_url: str = ""
 
+    # Free cron-pulse sync. Use external cron-job.org/GitHub Actions to call /cron/tick.
+    cron_secret: str = Field(default="", validation_alias=AliasChoices("CRON_SECRET", "cron_secret"))
+    cron_tick_max_runtime_seconds: int = 35
+    cron_tick_pages_per_run: int = 1
+
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
 

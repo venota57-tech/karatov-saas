@@ -43,9 +43,9 @@ except Exception as e:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # RC1.7.1 Full Sync Engine: web is API/UI only.
-    # Full marketplace ingestion runs via worker jobs, never in startup.
-    print("[startup] HTTP-first mode: full sync engine is worker-only")
+    # RC1.7.2 Free Cron-Pulse Sync Engine.
+    # Web starts fast; external cron calls /cron/tick to run one safe sync block.
+    print("[startup] HTTP-first mode: cron-pulse sync is external-triggered")
     yield
 
 
@@ -167,6 +167,7 @@ def questions_priority_rc170(
 
 
 for route in [
+    "app.routes.cron",
     "app.routes.full_sync",
     "app.routes.marketplace_os",
     "app.routes.system",

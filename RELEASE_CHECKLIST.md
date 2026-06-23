@@ -53,3 +53,11 @@
 - Operations sync no longer writes new as a meaningless default for freshly synced rows; unsupported blocks are reported honestly.
 - Added /full-sync/enqueue and /full-sync/plan.
 - Added Render worker blueprint entry: karatov-saas-worker, command python -m app.worker.
+
+## RC1.7.2 Free Cron-Pulse Sync Engine
+- Replaced paid Render Background Worker requirement with /cron/tick free cron-pulse mode.
+- Added CRON_SECRET-protected endpoints: /cron/tick, /cron/status, /cron/wake.
+- One external cron hit runs one safe sync block: Ozon, WB, published-answer enrichment or Operations.
+- Ozon review cursors are restored from and saved to SyncCursor so deploys do not restart backfill from the first 1000.
+- Operations rows now separate marketplace_status/cx_workflow_status and stop using meaningless status=new for synced rows.
+- Render blueprint no longer requires paid worker service.

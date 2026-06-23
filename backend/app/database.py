@@ -132,7 +132,9 @@ def run_lightweight_migrations():
         "amount": "VARCHAR(64)",
         "quantity": int_type,
         "reason": "TEXT",
-        "status": "VARCHAR(64) DEFAULT 'new'",
+        "status": "VARCHAR(64) DEFAULT 'synced'",
+        "marketplace_status": "VARCHAR(128)",
+        "cx_workflow_status": "VARCHAR(64) DEFAULT 'new_to_review'",
         "responsible": "VARCHAR(128)",
         "comment": "TEXT",
         "raw": json_type,
@@ -158,6 +160,9 @@ def run_lightweight_migrations():
         conn.execute(text("UPDATE questions SET status = 'new' WHERE status IS NULL"))
         conn.execute(text("UPDATE reviews SET ai_can_autopublish = FALSE WHERE ai_can_autopublish IS NULL"))
         conn.execute(text("UPDATE questions SET ai_can_autopublish = FALSE WHERE ai_can_autopublish IS NULL"))
+
+        conn.execute(text("UPDATE marketplace_operations SET status = 'synced' WHERE status = 'new'"))
+        conn.execute(text("UPDATE marketplace_operations SET cx_workflow_status = 'new_to_review' WHERE cx_workflow_status IS NULL"))
 
     return {"ok": True, "dialect": dialect}
 

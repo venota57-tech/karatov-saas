@@ -184,6 +184,8 @@ class OperationsSyncService:
             'quantity': int(_first(item, ['quantity','qty']) or 1),
             'reason': _first(item, ['reason','returnReason','comment','status']),
             'status': 'synced',
+            'marketplace_status': str(_first(item, ['status','state','operation_status','operationStatus']) or 'synced'),
+            'cx_workflow_status': 'new_to_review',
             'raw': item,
             'occurred_at': _parse_dt(_first(item, ['date','returnDate','createdAt','lastChangeDate'])) or _now_utc(),
         }
@@ -252,6 +254,8 @@ class OperationsSyncService:
             'quantity': int(_first(item, ['quantity','qty']) or 1),
             'reason': _first(item, ['reason','return_reason_name','status','state']),
             'status': 'synced',
+            'marketplace_status': str(_first(item, ['status','state','operation_status','operationStatus']) or 'synced'),
+            'cx_workflow_status': 'new_to_review',
             'raw': item,
             'occurred_at': _parse_dt(_first(item, ['created_at','createdAt','date','act_date','actDate','return_date','returnDate'])) or _now_utc(),
         }
