@@ -35,6 +35,7 @@ jobs:
       GITHUB_SYNC_KIND: ${{ github.event.inputs.kind || 'all' }}
       GITHUB_SYNC_MAX_OZON_PAGES: "40"
       GITHUB_SYNC_MAX_WB_CYCLES: "6"
+      GITHUB_SYNC_OZON_TAKE: "25"
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout

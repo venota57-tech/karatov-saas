@@ -76,3 +76,10 @@
 - External Render Postgres SSL drops are retried with engine.dispose and fresh sessions.
 - Failed runner status is persisted through a fresh DB transaction to avoid PendingRollback masking the real error.
 - Ozon backfill remains durable through SyncCursor and continues across runs.
+
+## RC1.7.4 Sync Runner Stable Ingestion
+- GitHub runner now isolates stages: Ozon, WB, Operations, Answers and Analytics no longer fail the whole run together.
+- Runner uses short-lived DB sessions per Ozon page and WB block to survive External Render Postgres SSL disconnects.
+- Ozon page size is reduced for GitHub runner only; this is a technical chunk size, not a business ceiling.
+- Ozon latest pass and persisted backfill pass continue through SyncCursor.
+- Failed stages are written to SyncJob without PendingRollback masking the real cause.
