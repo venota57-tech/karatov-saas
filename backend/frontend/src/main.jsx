@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from "react-dom/client";
 import "./style.css";
 
@@ -208,6 +208,8 @@ function Empty({ children = "Данных нет" }) { return <div className="em
 function App() {
   const [page, setPage] = useState("tower");
   const [platform, setPlatform] = useState("ALL");
+  const platformRef = useRef('ALL');
+  useEffect(() => { platformRef.current = normPlatform(platform || selectedPlatform || marketplace || 'ALL'); }, [platform, selectedPlatform, marketplace]);
   const [state, setState] = useState("unanswered");
   const [kind, setKind] = useState("reviews");
   const [search, setSearch] = useState("");
@@ -482,7 +484,7 @@ function App() {
   function openProductCommunications(sku, targetKind = "reviews", rowPlatform = null) {
     if (!sku) return;
     const effectivePlatform = normPlatform(rowPlatform || platform);
-    if (effectivePlatform && effectivePlatform !== "ALL") setPlatform(effectivePlatform);
+    if (effectivePlatform && effectivePlatform !== "ALL") setPlatform(effectivePlatform); platformRef.current = normPlatform(effectivePlatform);
     setPage("communications");
     setKind(targetKind === "questions" ? "questions" : "reviews");
     setState("all");
@@ -569,7 +571,7 @@ function App() {
   }
 
   function renderPlatformSwitch() {
-    return <div className="marketSwitch">{PLATFORMS.map(p => <button key={p.id} className={platform === p.id ? "active" : ""} onClick={() => { setPlatform(p.id); setSelected(null); setDraft(""); }}>{p.title}</button>)}</div>;
+    return <div className="marketSwitch">{PLATFORMS.map(p => <button key={p.id} className={platform === p.id ? "active" : ""} onClick={() => { setPlatform(p.id); platformRef.current = normPlatform(p.id); setSelected(null); setDraft(""); }}>{p.title}</button>)}</div>;
   }
 
   function renderSidebar() {

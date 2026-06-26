@@ -3,36 +3,33 @@ name: KARATOV Answers Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: '*/10 * * * *'
 
 concurrency:
   group: karatov-answers-sync
   cancel-in-progress: false
 
 jobs:
-  sync:
+  answers:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: backend
+    timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
-      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+      WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
-      OZON_AUTO_SYNC_ENABLED: "false"
-      WB_SYNC_MODE: "both"
-      WB_AUTO_SYNC_ENABLED: "false"
-      GITHUB_SYNC_KIND: "answers"
+      GITHUB_SYNC_KIND: answers
       GITHUB_SYNC_OZON_TAKE: "25"
-      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python -m app.github_sync_runner
+          python-version: '3.12'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run answers sync
+        working-directory: backend
+        run: python -m app.github_sync_runner

@@ -3,37 +3,55 @@ name: KARATOV Hot Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: '*/5 * * * *'
 
 concurrency:
   group: karatov-hot-sync
   cancel-in-progress: false
 
 jobs:
-  sync:
+  hot-wb:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: backend
+    timeout-minutes: 15
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
-      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
-      OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
-      OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      OZON_SYNC_ENABLED: "true"
-      OZON_AUTO_SYNC_ENABLED: "false"
-      WB_SYNC_MODE: "both"
+      WB_SYNC_MODE: both
       WB_AUTO_SYNC_ENABLED: "false"
-      GITHUB_SYNC_KIND: "hot"
-      GITHUB_SYNC_MAX_WB_CYCLES: "2"
-      GITHUB_SYNC_OZON_TAKE: "25"
-      PYTHONUNBUFFERED: "1"
+      OZON_SYNC_ENABLED: "true"
+      GITHUB_SYNC_KIND: hot_wb
+      GITHUB_SYNC_MAX_WB_CYCLES: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python -m app.github_sync_runner
+          python-version: '3.12'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run WB hot sync
+        working-directory: backend
+        run: python -m app.github_sync_runner
+
+  hot-ozon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
+      OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+      OZON_SYNC_ENABLED: "true"
+      OZON_AUTO_SYNC_ENABLED: "false"
+      GITHUB_SYNC_KIND: hot_ozon
+      GITHUB_SYNC_OZON_TAKE: "25"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run Ozon hot sync
+        working-directory: backend
+        run: python -m app.github_sync_runner

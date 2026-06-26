@@ -1,16 +1,16 @@
-name: KARATOV Backfill Sync
+name: KARATOV Nightly Deep Sync
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '10 22 * * *'
 
 concurrency:
-  group: karatov-backfill-sync
+  group: karatov-nightly-deep-sync
   cancel-in-progress: false
 
 jobs:
-  backfill:
+  nightly:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -20,9 +20,9 @@ jobs:
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
       WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
-      GITHUB_SYNC_KIND: backfill
-      GITHUB_SYNC_MAX_OZON_PAGES: "40"
-      GITHUB_SYNC_MAX_WB_CYCLES: "2"
+      GITHUB_SYNC_KIND: nightly
+      GITHUB_SYNC_MAX_OZON_PAGES: "80"
+      GITHUB_SYNC_MAX_WB_CYCLES: "4"
       GITHUB_SYNC_OZON_TAKE: "25"
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,6 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run archive backfill
+      - name: Run nightly deep sync
         working-directory: backend
         run: python -m app.github_sync_runner

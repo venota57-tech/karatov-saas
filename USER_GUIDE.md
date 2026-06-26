@@ -199,3 +199,10 @@ Manual run:
 - Runner supports kind=hot, answers, backfill, operations, analytics and all.
 - Fresh marketplace data is prioritized: WB unanswered feedbacks/questions and Ozon latest review/question pages run on the lowest free interval.
 - Archive and operations are isolated from fresh sync so they cannot block operator-facing data.
+
+## RC1.7.7 Split Sync Stability + UI Platform Lock
+- Hot Sync now runs WB and Ozon as separate parallel jobs, so Ozon cannot consume the whole 10 minute window before WB starts.
+- Hot Sync timeout increased to 15 minutes per platform job; Backfill/Answers/Operations have their own safe windows.
+- Runner supports explicit kinds: hot_wb, hot_ozon, backfill, answers, operations, nightly.
+- UI polling is locked to the currently selected marketplace and should not revert Control Tower to ALL after 10-15 seconds.
+- Operations UI no longer clears existing data on an empty sync response; empty live operation sync is reported as a warning, not a destructive zero.
