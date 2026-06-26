@@ -7,6 +7,9 @@ on:
     # Shifted away from exact :00/:05/:10 peak minutes.
     - cron: "3-58/5 * * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: karatov-hot-sync
   cancel-in-progress: false

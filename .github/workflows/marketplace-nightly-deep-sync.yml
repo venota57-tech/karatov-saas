@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "37 23 * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: karatov-nightly-deep-sync
   cancel-in-progress: false

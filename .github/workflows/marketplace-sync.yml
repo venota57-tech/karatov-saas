@@ -8,6 +8,9 @@ on:
         required: false
         default: "all"
 
+permissions:
+  contents: read
+
 concurrency:
   group: karatov-marketplace-sync
   cancel-in-progress: false

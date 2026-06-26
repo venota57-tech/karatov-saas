@@ -7,3 +7,11 @@ backend/playwright_profiles/
 .venv/
 .venv312/
 backend/frontend/dist/
+
+.rescue_backups/
+
+fix_github_actions_scheduler.sh
+
+.github/workflows/backup_scheduler_v*/
+
+.github/workflows/*.backup.*

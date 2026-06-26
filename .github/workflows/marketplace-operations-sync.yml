@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "22 * * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: karatov-operations-sync
   cancel-in-progress: false

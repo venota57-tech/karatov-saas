@@ -6,6 +6,9 @@ on:
     # Archive/backfill is intentionally slower than hot sync to avoid WB/Ozon rate limits.
     - cron: "17 * * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: karatov-backfill-sync
   cancel-in-progress: false

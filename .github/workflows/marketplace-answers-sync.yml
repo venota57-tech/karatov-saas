@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "4-59/10 * * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: karatov-answers-sync
   cancel-in-progress: false
