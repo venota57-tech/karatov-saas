@@ -650,6 +650,32 @@ class StableMarketplaceOS:
                 row[k] = loads(row.get(k))
         return row
 
+
+    def _select_entity_rows(self, table: str, platform: str, limit: int) -> list[dict[str, Any]]:
+        # Select rows with table-specific timestamp ordering.
+        # v4.0 used created_at_marketplace in the buyer_chats query, but buyer_chats
+        # does not have that column, so /stable-os/api/communications returned HTTP 500.
+        table = str(table)
+        if table not in {"buyer_chats", "buyer_returns", "marketplace_operations"}:
+            return []
+        cols = self._cols(table)
+        candidates_by_table = {
+            "buyer_chats": ["last_message_at", "updated_at", "created_at"],
+            "buyer_returns": ["created_at_marketplace", "updated_at_marketplace", "updated_at", "created_at"],
+            "marketplace_operations": ["occurred_at", "updated_at", "created_at"],
+        }
+        order_cols = [c for c in candidates_by_table.get(table, ["updated_at", "created_at"]) if c in cols]
+        if not order_cols:
+            order_expr = "id"
+        elif len(order_cols) == 1:
+            order_expr = order_cols[0]
+        else:
+            order_expr = "COALESCE(" + ", ".join(order_cols) + ")"
+        where = "WHERE (:p='ALL' OR platform=:p)" if "platform" in cols else ""
+        sql = f"SELECT * FROM {table} {where} ORDER BY {order_expr} DESC, id DESC LIMIT :l"
+        return [dict(r) for r in self.db.execute(text(sql), {"p": platform, "l": limit}).mappings().all()]
+
+
     def communications(self, platform: str = "ALL", limit: int = 100) -> dict[str, Any]:
         self.ensure_schema()
         platform = (platform or "ALL").upper()
@@ -681,7 +707,11 @@ class StableMarketplaceOS:
         for table, entity in [("buyer_chats", "chat"), ("buyer_returns", "return_request")]:
             if table not in self._tables():
                 continue
-            rows = self.db.execute(text(f"SELECT * FROM {table} WHERE (:p='ALL' OR platform=:p) ORDER BY COALESCE(last_message_at, created_at_marketplace, updated_at, created_at) DESC, id DESC LIMIT :l"), {"p": platform, "l": limit}).mappings().all()
+            try:
+                rows = self._select_entity_rows(table, platform, limit)
+            except Exception as exc:
+                self.raw(platform, f"stable_os_{table}_select", "failed", {"table": table}, str(exc))
+                rows = []
             for rr in rows:
                 r = self._decode(dict(rr))
                 eid = str(r.get("external_chat_id") or r.get("external_return_id") or r.get("id"))

@@ -82,19 +82,36 @@ async def sync_start(kind: str, platform: str = "ALL"):
 
 
 @router.get("/api/communications")
-def communications(platform: str = "ALL", limit: int = 120, db: Session = Depends(get_db)):
-    return StableMarketplaceOS(db).communications(platform=platform, limit=limit)
 
+def communications(platform: str = "ALL", limit: int = 120, db: Session = Depends(get_db)):
+    try:
+        return StableMarketplaceOS(db).communications(platform=platform, limit=limit)
+    except Exception as exc:
+        try:
+            StableMarketplaceOS(db).raw((platform or "ALL").upper(), "stable_os_api_communications", "failed", {}, str(exc))
+        except Exception:
+            pass
+        return {"ok": False, "platform": (platform or "ALL").upper(), "items": [], "error": str(exc)}
 
 @router.get("/api/operations")
-def operations(platform: str = "ALL", limit: int = 200, db: Session = Depends(get_db)):
-    return StableMarketplaceOS(db).operations(platform=platform, limit=limit)
 
+def operations(platform: str = "ALL", limit: int = 200, db: Session = Depends(get_db)):
+    try:
+        return StableMarketplaceOS(db).operations(platform=platform, limit=limit)
+    except Exception as exc:
+        try:
+            StableMarketplaceOS(db).raw((platform or "ALL").upper(), "stable_os_api_operations", "failed", {}, str(exc))
+        except Exception:
+            pass
+        return {"ok": False, "platform": (platform or "ALL").upper(), "items": [], "error": str(exc)}
 
 @router.get("/api/diagnostics")
-def diagnostics(platform: str = "ALL", limit: int = 120, db: Session = Depends(get_db)):
-    return StableMarketplaceOS(db).diagnostics(platform=platform, limit=limit)
 
+def diagnostics(platform: str = "ALL", limit: int = 120, db: Session = Depends(get_db)):
+    try:
+        return StableMarketplaceOS(db).diagnostics(platform=platform, limit=limit)
+    except Exception as exc:
+        return {"ok": False, "platform": (platform or "ALL").upper(), "items": [], "error": str(exc)}
 
 @router.post("/api/media/upload-json")
 def media_upload_json(payload: dict[str, Any] = Body(...), db: Session = Depends(get_db)):
@@ -113,12 +130,16 @@ def media_download(media_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/api/scheduler")
+
 def scheduler():
-    root = Path.cwd().parent if Path.cwd().name == "backend" else Path.cwd()
-    wf_dir = root / ".github" / "workflows"
-    files = sorted(wf_dir.glob("*.yml")) if wf_dir.exists() else []
-    workflows = []
-    for f in files:
-        txt = f.read_text(encoding="utf-8", errors="ignore")
-        workflows.append({"file": f.name, "has_schedule": "schedule:" in txt, "has_workflow_dispatch": "workflow_dispatch:" in txt, "cron": [line.strip() for line in txt.splitlines() if "cron:" in line][:5]})
-    return {"ok": True, "workflow_dir": str(wf_dir), "workflows": workflows}
+    try:
+        root = Path.cwd().parent if Path.cwd().name == "backend" else Path.cwd()
+        wf_dir = root / ".github" / "workflows"
+        files = sorted(wf_dir.glob("*.yml")) if wf_dir.exists() else []
+        workflows = []
+        for f in files:
+            txt = f.read_text(encoding="utf-8", errors="ignore")
+            workflows.append({"file": f.name, "has_schedule": "schedule:" in txt, "has_workflow_dispatch": "workflow_dispatch:" in txt, "cron": [line.strip() for line in txt.splitlines() if "cron:" in line][:5]})
+        return {"ok": True, "workflow_dir": str(wf_dir), "workflows": workflows}
+    except Exception as exc:
+        return {"ok": False, "workflow_dir": None, "workflows": [], "error": str(exc)}
