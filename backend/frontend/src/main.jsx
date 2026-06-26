@@ -420,8 +420,8 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api(`/reviews?platform=${requestedPlatform}&limit=200`).catch(() => []),
-        api(`/questions?platform=${requestedPlatform}&limit=200`).catch(() => []),
+        api(`/reviews?platform=${requestedPlatform}&limit=1000`).catch(() => []),
+        api(`/questions?platform=${requestedPlatform}&limit=1000`).catch(() => []),
         api(`/system/dashboard?platform=${encodeURIComponent(requestedPlatform)}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: requestedPlatform, counts: null, source: "frontend_dashboard_timeout" })),
         api("/ops/sync-history", { timeoutMs: 4000 }).catch(() => null),
         api("/ops/publish-history", { timeoutMs: 4000 }).catch(() => null),
@@ -624,7 +624,7 @@ async function patchReturn(id, payload) {
       <h1>KARATOV<br/>CX Hub</h1>
       {renderPlatformSwitch()}
       {groups.map(group => <div key={group} className="navGroup"><div className="navGroupTitle">{group}</div>{NAV.filter(x => x.group === group).map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => setPage(item.id)}>{item.title}{navCount(item.id)}</button>)}</div>)}
-      <div className="syncMini">Обновлено: {dt(lastRefresh)}<br/>Режим публикации: {diagnostics?.publishing?.mode || "—"}<br/>{loading ? "Выполняется…" : "Готово"}</div>
+      <div className="syncMini">Обновлено: {dt(lastRefresh)}<br/>Режим публикации: {diagnostics?.publishing?.mode || "—"} · Аудит: /sync-audit/marketplace?platform={platform}<br/>{loading ? "Выполняется…" : "Готово"}</div>
     </aside>;
   }
 
@@ -669,11 +669,22 @@ async function patchReturn(id, payload) {
   }
 
   function buildEventFeed() {
-    const events = [];
-    platformItems.slice(0, 8).forEach(x => events.push({ at: x.created_at || x.updated_at, title: x.kind === "review" ? "Новый отзыв" : "Новый вопрос", text: `${x.platform} · ${x.sku || x.product_name || "товар"}` }));
-    (booking?.events || booking?.history || []).slice(0, 5).forEach(x => events.push({ at: x.at, title: "Slot Hunter", text: x.message || x.event || x.kind || "событие" }));
-    return events.sort((a,b)=>new Date(b.at || 0)-new Date(a.at || 0));
-  }
+  const events = [];
+  const sortedItems = platformItems
+    .slice()
+    .sort((a, b) => new Date((b.created_at_marketplace || b.created_at || b.updated_at) || 0) - new Date((a.created_at_marketplace || a.created_at || a.updated_at) || 0));
+  sortedItems.slice(0, 12).forEach(x => events.push({
+    at: x.created_at_marketplace || x.created_at || x.updated_at,
+    title: x.kind === "review" ? "Новый отзыв" : "Новый вопрос",
+    text: `${x.platform} · ${x.sku || x.product_name || "товар"}`
+  }));
+  (booking?.events || booking?.history || []).slice(0, 5).forEach(x => events.push({
+    at: x.at,
+    title: "Slot Hunter",
+    text: x.message || x.event || x.kind || "событие"
+  }));
+  return events.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+}
 
   function buildAttentionItems() {
     const items = [];
