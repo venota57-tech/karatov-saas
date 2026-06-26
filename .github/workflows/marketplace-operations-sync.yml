@@ -26,6 +26,10 @@ jobs:
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: operations
       CUSTOMER_OPS_MAX_RETURNS: "150"
+      OPERATIONS_MAX_ROWS: "500"
+      OPERATIONS_MAX_PAGES: "4"
+      OZON_ACT_LIMIT: "500"
+      OZON_ACT_CHUNK_DAYS: "7"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

@@ -27,3 +27,16 @@
 .stickyPanel { position: sticky; top: 18px; align-self: flex-start; }
 .chatBox { min-height: 420px; }
 .chatMsg p { white-space: pre-wrap; word-break: break-word; }
+
+/* Customer Ops real sync v2.1 */
+.stickyPanel { position: sticky; top: 18px; align-self: flex-start; }
+.chatBox { min-height: 420px; }
+.chatMsg p { white-space: pre-wrap; word-break: break-word; }
+
+/* Operations + Customer Ops v3 */
+.stickyPanel { position: sticky; top: 18px; align-self: flex-start; }
+.chatBox { min-height: 420px; max-height: 620px; overflow: auto; }
+.chatMsg p { white-space: pre-wrap; word-break: break-word; }
+.mediaGrid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.mediaGrid img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; border: 1px solid rgba(0,0,0,.08); }
+.mediaFile { display: inline-block; padding: 8px 10px; border-radius: 12px; background: rgba(0,0,0,.06); }

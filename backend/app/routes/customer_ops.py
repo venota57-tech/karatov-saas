@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db
 from app.services.customer_ops_service import CustomerOpsService, _jl
+from app.services.ops_common import loads, extract_media, message_text, get, product_link
 
 router = APIRouter(prefix="/customer-ops", tags=["customer-ops"])
 _sync_task = None
@@ -33,10 +34,33 @@ def _one(db: Session, sql: str, params: dict[str, Any]) -> dict[str, Any] | None
     return dict(row) if row else None
 
 def _decode(row: dict[str, Any]) -> dict[str, Any]:
-    if "raw" in row: row["raw"] = _jl(row.get("raw"))
+    raw_obj = None
+    if "raw" in row:
+        raw_obj = loads(row.get("raw")) if "loads" in globals() else _jl(row.get("raw"))
+        row["raw"] = raw_obj
+    if "media" in row:
+        row["media"] = loads(row.get("media")) if row.get("media") else []
+    elif raw_obj is not None:
+        row["media"] = extract_media(raw_obj)
+    if raw_obj is not None:
+        if not row.get("text") and "text" in row:
+            row["text"] = message_text(raw_obj)
+        if not row.get("buyer_name"):
+            row["buyer_name"] = str(get(raw_obj, "buyer_name", "customer_name", "client_name", "user_name", "buyerName", "clientName", default="") or "")
+        if not row.get("order_number"):
+            row["order_number"] = str(get(raw_obj, "order_number", "orderNumber", "order_id", "orderId", "order_uid", "srid", "rid", default="") or "")
+        if not row.get("posting_number"):
+            row["posting_number"] = str(get(raw_obj, "posting_number", "postingNumber", "posting", default="") or "")
+        if not row.get("product_url"):
+            row["product_url"] = product_link(str(row.get("platform") or ""), row.get("sku"), raw_obj)
+        if not row.get("product_image"):
+            media = extract_media(raw_obj)
+            row["product_image"] = next((m.get("url") for m in media if m.get("type") == "image"), None)
     for key, value in list(row.items()):
-        if hasattr(value, "isoformat"): row[key] = value.isoformat()
-    if "needs_response" in row: row["needs_response"] = bool(row["needs_response"])
+        if hasattr(value, "isoformat"):
+            row[key] = value.isoformat()
+    if "needs_response" in row:
+        row["needs_response"] = bool(row["needs_response"])
     return row
 
 def _where(platform: str) -> tuple[str, dict[str, Any]]:
