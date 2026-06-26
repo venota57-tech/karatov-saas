@@ -282,6 +282,23 @@ async def run_wb(cycles: int, blocks: list[str] | None = None) -> dict[str, Any]
                 result["blocks"].append({"platform": "WB", "block": block, "cycle": cycle, "status": "failed", "error": str(exc)})
     return result
 
+async def run_customer_ops() -> dict[str, Any]:
+    db = _new_session()
+    try:
+        from app.services.customer_ops_service import CustomerOpsService
+        mode = os.getenv("GITHUB_CUSTOMER_OPS_MODE", "hot")
+        res = await CustomerOpsService(db).sync(platform="ALL", mode=mode)
+        db.commit()
+        return res
+    except Exception:
+        _safe_close(db)
+        raise
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
 async def run_operations() -> dict[str, Any]:
     db = _new_session()
     try:
@@ -440,6 +457,8 @@ async def run_all(kind: str) -> dict[str, Any]:
         result["stages"]["hot_wb"] = await run_stage("hot_wb", lambda: run_wb(cycles=1, blocks=WB_FAST_BLOCKS))
     elif kind == "hot_ozon":
         result["stages"]["hot_ozon"] = await run_stage("hot_ozon", run_ozon_hot)
+    elif kind == "customer_ops":
+        result["stages"]["customer_ops"] = await run_stage("customer_ops", run_customer_ops)
     elif kind == "backfill":
         result["stages"]["wb_backfill"] = await run_stage("wb_backfill", lambda: run_wb(cycles=max_wb_cycles, blocks=WB_ARCHIVE_BLOCKS))
         result["stages"]["ozon_backfill"] = await run_stage("ozon_backfill", lambda: run_ozon(max_pages=max_ozon_pages, include_latest=False, include_backfill=True, include_questions=False))
@@ -468,7 +487,7 @@ async def run_all(kind: str) -> dict[str, Any]:
 def main() -> None:
     cli_kind = sys.argv[1].strip().lower() if len(sys.argv) > 1 else None
     kind = (cli_kind or os.getenv("GITHUB_SYNC_KIND") or "all").strip().lower()
-    allowed = {"all", "ozon", "wb", "operations", "answers", "analytics", "hot_wb", "hot_ozon", "backfill", "nightly"}
+    allowed = {"all", "ozon", "wb", "operations", "answers", "analytics", "hot_wb", "hot_ozon", "backfill", "nightly", "customer_ops"}
     if kind not in allowed:
         raise SystemExit(f"Unsupported GITHUB_SYNC_KIND={kind}. Allowed: {sorted(allowed)}")
     print(asyncio.run(run_all(kind)), flush=True)

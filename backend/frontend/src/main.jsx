@@ -232,7 +232,7 @@ function App() {
   const [rules, setRules] = useState({});
   const [booking, setBooking] = useState(null);
   const [operations, setOperations] = useState([]);
-  const [operationsSummary, setOperationsSummary] = useState(null);
+  const [operationsSummary, setOperationsSummary] = useState(null); const [customerOpsTab, setCustomerOpsTab] = useState("operations"); const [customerOpsSummary, setCustomerOpsSummary] = useState(null); const [chats, setChats] = useState([]); const [returnsList, setReturnsList] = useState([]); const [selectedChat, setSelectedChat] = useState(null); const [chatMessages, setChatMessages] = useState([]); const [chatDraft, setChatDraft] = useState(""); const [chatSla, setChatSla] = useState(null);
   const [operationType, setOperationType] = useState("all"); const operationTypeRef = useRef("all"); useEffect(() => { operationTypeRef.current = operationType || "all"; }, [operationType]);
   const [roleRights, setRoleRights] = useState(loadSavedRights);
   const refreshRequestSeq = useRef(0);
@@ -563,7 +563,49 @@ function App() {
     finally { setLoading(false); }
   }
 
-  async function saveBookingConfig(next) {
+  
+async function loadCustomerOps(show = true) {
+  const requestedPlatform = normPlatform(platformRef.current || platform || "ALL");
+  if (show) setMessage("Обновляю Customer Ops…");
+  try {
+    const [summaryRes, chatsRes, returnsRes, slaRes] = await Promise.allSettled([
+      api(`/customer-ops/summary?platform=${requestedPlatform}`, { timeoutMs: 10000 }).catch(() => null),
+      api(`/customer-ops/chats?platform=${requestedPlatform}&limit=100`, { timeoutMs: 10000 }).catch(() => null),
+      api(`/customer-ops/returns?platform=${requestedPlatform}&limit=100`, { timeoutMs: 10000 }).catch(() => null),
+      api(`/reports/chat-sla?platform=${requestedPlatform}&days=30`, { timeoutMs: 10000 }).catch(() => null),
+    ]);
+    if (summaryRes.status === "fulfilled" && summaryRes.value) setCustomerOpsSummary(prev => summaryRes.value || prev);
+    if (chatsRes.status === "fulfilled" && chatsRes.value) setChats(prev => (chatsRes.value.items || []).length || requestedPlatform !== "ALL" ? (chatsRes.value.items || []) : prev);
+    if (returnsRes.status === "fulfilled" && returnsRes.value) setReturnsList(prev => (returnsRes.value.items || []).length || requestedPlatform !== "ALL" ? (returnsRes.value.items || []) : prev);
+    if (slaRes.status === "fulfilled" && slaRes.value) setChatSla(slaRes.value);
+    if (show) setMessage("Customer Ops обновлен");
+  } catch (e) { if (show) setMessage(`Ошибка Customer Ops: ${e.message}`); }
+}
+async function runCustomerOpsSync(mode = "full") {
+  setLoading(true); setMessage("Запускаю синхронизацию Customer Ops…");
+  try { const res = await api(`/customer-ops/sync?platform=${platform}&mode=${mode}`, { method: "POST", timeoutMs: 45000 }); await loadCustomerOps(false); await refreshAll(false); setMessage(res?.message || "Customer Ops синхронизирован"); }
+  catch (e) { setMessage(`Ошибка Customer Ops sync: ${e.message}`); } finally { setLoading(false); }
+}
+async function openChat(chat) {
+  setSelectedChat(chat); setChatDraft("");
+  try { const data = await api(`/customer-ops/chats/${chat.id}/messages`, { timeoutMs: 10000 }); setSelectedChat(data.chat || chat); setChatMessages(data.items || []); }
+  catch (e) { setMessage(`Ошибка истории чата: ${e.message}`); }
+}
+async function patchChat(id, payload) {
+  try { const updated = await api(`/customer-ops/chats/${id}`, { method: "PATCH", body: JSON.stringify(payload) }); setChats(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x)); if (selectedChat?.id === id) setSelectedChat(prev => ({ ...prev, ...updated })); }
+  catch (e) { setMessage(`Ошибка статуса чата: ${e.message}`); }
+}
+async function sendChatReply() {
+  if (!selectedChat?.id || !chatDraft.trim()) return;
+  setLoading(true);
+  try { const res = await api(`/customer-ops/chats/${selectedChat.id}/reply`, { method: "POST", body: JSON.stringify({ message: chatDraft }), timeoutMs: 20000 }); await openChat(selectedChat); await loadCustomerOps(false); setChatDraft(""); setMessage(res?.status === "sent" ? "Ответ отправлен в маркетплейс" : (res?.message || "Ответ сохранен")); }
+  catch (e) { setMessage(`Ошибка отправки чата: ${e.message}`); } finally { setLoading(false); }
+}
+async function patchReturn(id, payload) {
+  try { const updated = await api(`/customer-ops/returns/${id}`, { method: "PATCH", body: JSON.stringify(payload) }); setReturnsList(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x)); }
+  catch (e) { setMessage(`Ошибка статуса возврата: ${e.message}`); }
+}
+ async function saveBookingConfig(next) {
     setBooking(next);
     try {
       const data = await api("/wb-booking/config", { method: "POST", body: JSON.stringify(next) });
@@ -747,7 +789,7 @@ function App() {
     const reviewByDay = groupCount(platformItems.filter(x => x.kind === "review"), x => day(x.created_at_marketplace)).slice(0, 14);
     const questionByDay = groupCount(platformItems.filter(x => x.kind === "question"), x => day(x.created_at_marketplace)).slice(0, 14);
     return <Section title="Аналитика" subtitle="Executive Dashboard, SLA скорости ответа, динамика отзывов/вопросов и AI Insights" actions={<button className="primary" onClick={() => refreshAll(true)}>Обновить</button>}>
-      <div className="cards wideCards"><Card title="Все коммуникации" value={num(metrics.total)}/><Card title="Требуют ответа" value={num(metrics.needs)} type={metrics.needs ? "warn" : ""}/><Card title="Оценки без текста" value={num(metrics.noTextRatings)} /><Card title="Риски" value={num(metrics.risks)} type={metrics.risks ? "danger" : ""}/><Card title="WB" value={num(allMetrics.wb)}/><Card title="Ozon" value={num(allMetrics.ozon)}/></div>
+      <div className="cards wideCards"><Card title="Чаты: средний ответ" value={fmtMinutes(chatSla?.avg_first_response_minutes)} hint="SLA ≤ 10 мин"/><Card title="Чаты без ответа" value={num(chatSla?.unanswered_chats_count || 0)} type={chatSla?.unanswered_chats_count ? "danger" : ""}/><Card title="Просрочка чатов" value={num(chatSla?.overdue_chats_count || 0)} type={chatSla?.overdue_chats_count ? "danger" : ""}/><Card title="Все коммуникации" value={num(metrics.total)}/><Card title="Требуют ответа" value={num(metrics.needs)} type={metrics.needs ? "warn" : ""}/><Card title="Оценки без текста" value={num(metrics.noTextRatings)} /><Card title="Риски" value={num(metrics.risks)} type={metrics.risks ? "danger" : ""}/><Card title="WB" value={num(allMetrics.wb)}/><Card title="Ozon" value={num(allMetrics.ozon)}/></div>
       <div className="panel"><h3>SLA скорости ответа</h3><div className="cards wideCards"><Card title="Отзывы ≤ 1 часа" value={num(response.reviewSla.inSla)} hint={`${response.reviewSlaPct}% из измеренных`} type={response.reviewSla.outSla ? "warn" : ""}/><Card title="Отзывы > 1 часа" value={num(response.reviewSla.outSla)} type={response.reviewSla.outSla ? "danger" : ""}/><Card title="Вопросы ≤ 15 минут" value={num(response.questionSla.inSla)} hint={`${response.questionSlaPct}% из измеренных`} type={response.questionSla.outSla ? "warn" : ""}/><Card title="Вопросы > 15 минут" value={num(response.questionSla.outSla)} type={response.questionSla.outSla ? "danger" : ""}/><Card title="Среднее время ответа" value={fmtMinutes(response.reviewSla.avgMin)} hint="по отзывам"/><Card title="P90 ответа" value={fmtMinutes(response.reviewSla.p90)} hint="по отзывам"/></div><p className="meta">Ozon-оценки без комментария исключены из SLA, AI и автопубликации. SLA считается только по answered_at из ЛК маркетплейса или публикации CX Hub. Записи без даты ответа не искажают среднее и P90.</p></div>
       <div className="layoutTwo"><div className="panel"><h3>Динамика день к дню</h3><table><tbody>{byDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div><div className="panel"><h3>Динамика неделя к неделе</h3><table><tbody>{byWeek.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div></div>
       <div className="layoutTwo"><div className="panel"><h3>Отзывы по дням</h3><table><tbody>{reviewByDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div><div className="panel"><h3>Вопросы по дням</h3><table><tbody>{questionByDay.map(([k,v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table></div></div>

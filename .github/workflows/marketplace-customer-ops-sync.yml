@@ -1,32 +1,33 @@
-name: KARATOV Operations Sync
+name: KARATOV Customer Ops Sync
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "22 * * * *"
+    - cron: "7-57/10 * * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: karatov-operations-sync
+  group: karatov-customer-ops-sync
   cancel-in-progress: false
 
 jobs:
-  operations:
-    name: Operations sync
+  customer-ops:
+    name: Customer Ops sync
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 12
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      OZON_SYNC_ENABLED: "true"
-      GITHUB_SYNC_KIND: operations
-      GITHUB_CUSTOMER_OPS_MODE: operations
-      CUSTOMER_OPS_MAX_RETURNS: "120"
+      GITHUB_SYNC_KIND: customer_ops
+      GITHUB_CUSTOMER_OPS_MODE: full
+      CUSTOMER_OPS_MAX_CHATS: "40"
+      CUSTOMER_OPS_MAX_MESSAGES_PER_CHAT: "50"
+      CUSTOMER_OPS_MAX_RETURNS: "80"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +37,6 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run operations sync
+      - name: Run customer ops sync
         working-directory: backend
         run: python -m app.github_sync_runner

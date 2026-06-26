@@ -185,7 +185,7 @@ for route in [
     "app.routes.analytics",
     "app.routes.wb_booking",
     "app.routes.ops_history",
-    "app.routes.operations",
+    "app.routes.operations", "app.routes.ops_reporting", "app.routes.customer_ops",
 ]:
     include_router_safe(route)
 
