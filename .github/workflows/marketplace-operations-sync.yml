@@ -3,6 +3,7 @@ name: KARATOV Operations Sync
 on:
   workflow_dispatch:
   schedule:
+    # Heavy operations loop: hourly, staggered away from hot/customer/backfill sync.
     - cron: "22 * * * *"
 
 permissions:

@@ -749,29 +749,52 @@ async function patchReturn(id, payload) {
   }
 
   function renderOperations() {
-    const labels = {
-      return: "Возвраты",
-      act: "Акты",
-      shortage: "Недостачи",
-      surplus: "Излишки",
-      anonymization: "Обезличка",
-      discrepancy: "Расхождения",
-    };
-    const byType = operationsSummary?.by_type || {};
-    const byStatus = operationsSummary?.by_status || {};
-    const syncMessage = operationsSummary?.api_status?.message;
-    return <Section title="Marketplace Operations Hub" subtitle="Возвраты, акты, недостачи, излишки, обезличка и расхождения" actions={<><button onClick={() => run(`/operations/sync?platform=${platform}`, "Запуск синхронизации операций")}>Синхронизировать операции</button><button className="primary" onClick={() => refreshAll(true)}>Обновить</button></>}>
-      <div className="cards wideCards">
-        <Card title="Всего операций" value={num(operationsSummary?.total || operations.length)} />
-        {Object.entries(labels).map(([key, title]) => <Card key={key} title={title} value={num(byType[key] || 0)} onClick={() => setOperationType(key)} />)}
-      </div>
-      <div className="sectionFilters"><div><label>Тип операции</label><select value={operationType} onChange={e => setOperationType(e.target.value)}><option value="all">Все</option>{Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></div><div className="grow"><label>Статусы</label><div className="tags"><Badge>Новые: {byStatus.new || 0}</Badge><Badge type="yellow">В работе: {byStatus.in_progress || 0}</Badge><Badge type="green">Закрыто: {byStatus.closed || 0}</Badge></div></div></div>
-      {syncMessage && <div className="message soft">{syncMessage}</div>}
-      <div className="panel"><h3>Реестр операций</h3>{operations.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Тип</th><th>Документ</th><th>SKU</th><th>Склад</th><th>Кол-во</th><th>Сумма</th><th>Статус</th><th>Ответственный</th></tr></thead><tbody>{operations.map(x => <tr key={x.id}><td>{dt(x.occurred_at || x.created_at)}</td><td><PlatformBadge value={x.platform}/></td><td>{labels[x.operation_type] || x.operation_type}</td><td>{x.document_number || x.external_id}</td><td>{x.sku || "—"}</td><td>{x.warehouse || "—"}</td><td>{x.quantity ?? "—"}</td><td>{x.amount || "—"}</td><td><Badge type={x.status === "closed" ? "green" : x.status === "in_progress" ? "yellow" : ""}>{x.status}</Badge></td><td>{x.responsible || "—"}</td></tr>)}</tbody></table> : <Empty>Данных пока нет. Нажми «Синхронизировать операции»: live adapter запросит доступные API WB/Ozon для возвратов и актов. Если метод недоступен по правам токена, ошибка появится в статусе без демо-данных.</Empty>}</div>
-    </Section>;
-  }
+  const labels = {
+    return_request: "Заявки на возврат",
+    return_received: "Полученные возвраты",
+    return: "Возвраты",
+    act: "Акты",
+    shortage: "Недостачи",
+    surplus: "Излишки",
+    anonymization: "Обезличка",
+    anonymized_item: "Обезличка",
+    discrepancy: "Расхождения",
+    finance_discrepancy: "Финансовые расхождения",
+    acceptance_issue: "Приемка",
+    shipment_issue: "Отгрузка",
+    supply_issue: "Поставка",
+    chat_escalation: "Эскалации из чатов",
+  };
+  const byType = operationsSummary?.by_type || {};
+  const byStatus = operationsSummary?.by_status || {};
+  const sla = chatSla || customerOpsSummary?.chat_sla || operationsSummary?.chat_sla || {};
+  const rawErrors = customerOpsSummary?.raw_errors || [];
+  return <Section title="Customer Ops + Operations Hub" subtitle="Чаты покупателей, заявки на возврат, акты, недостачи, излишки, обезличка и рабочие статусы операторов" actions={<><button onClick={() => runCustomerOpsSync("full")}>Синхронизировать Customer Ops</button><button onClick={() => run(`/operations/sync?platform=${platform}`, "Синхронизация Operations Hub")}>Синхронизировать операции</button><button className="primary" onClick={() => { refreshAll(true); loadCustomerOps(true); }}>Обновить</button></>}>
+    <div className="cards wideCards">
+      <Card title="Операций" value={num(operationsSummary?.total || operationsSummary?.total_operations || operations.length)} />
+      <Card title="Активные возвраты" value={num(customerOpsSummary?.returns_active || returnsList.filter(x => !["closed","resolved"].includes(x.internal_status)).length)} type={(customerOpsSummary?.returns_active || 0) ? "warn" : ""} onClick={() => setCustomerOpsTab("returns")} />
+      <Card title="Заявок на возврат" value={num(customerOpsSummary?.returns_total || returnsList.length)} onClick={() => setCustomerOpsTab("returns")} />
+      <Card title="Чаты без ответа" value={num(customerOpsSummary?.chats_unanswered || chats.filter(x => x.needs_response).length)} type={(customerOpsSummary?.chats_unanswered || 0) ? "danger" : ""} onClick={() => setCustomerOpsTab("chats")} />
+      <Card title="Средний ответ в чатах" value={fmtMinutes(sla.avg_first_response_minutes)} hint="SLA ≤ 10 мин" />
+      <Card title="Просрочка чатов" value={num(sla.overdue_chats_count || 0)} type={sla.overdue_chats_count ? "danger" : ""} />
+    </div>
 
-  function renderFbo() {
+    <div className="tabs opsTabs">
+      <button className={customerOpsTab === "chats" ? "active" : ""} onClick={() => { setCustomerOpsTab("chats"); loadCustomerOps(false); }}>Чаты ({chats.length})</button>
+      <button className={customerOpsTab === "returns" ? "active" : ""} onClick={() => { setCustomerOpsTab("returns"); loadCustomerOps(false); }}>Заявки на возврат ({returnsList.length})</button>
+      <button className={customerOpsTab === "operations" ? "active" : ""} onClick={() => setCustomerOpsTab("operations")}>Операции ({operations.length})</button>
+      <button className={customerOpsTab === "diagnostics" ? "active" : ""} onClick={() => setCustomerOpsTab("diagnostics")}>Диагностика API</button>
+    </div>
+
+    {customerOpsTab === "chats" && <div className="layoutTwo"><div className="panel"><h3>Чаты покупателей</h3><p className="meta">История должна включать ответы из ЛК продавца после синхронизации Customer Ops.</p>{chats.length ? chats.map(chat => <div className="miniItem clickable" key={chat.id} onClick={() => openChat(chat)}><b>{chat.platform} · {chat.product_name || chat.sku || chat.external_chat_id}</b><span>{chat.needs_response ? "требует ответа" : (chat.response_sla_status || "—")} · последнее: {dt(chat.last_message_at || chat.updated_at)}</span><small>{chat.internal_status || "new"} · {chat.assigned_to || "без ответственного"}</small></div>) : <Empty>Чаты пока не загружены. Нажми «Синхронизировать Customer Ops». Если после успешного Action тут пусто, открой «Диагностика API»: там будет ошибка прав/endpoint, без демо-строк.</Empty>}</div><div className="panel"><h3>Карточка чата</h3>{selectedChat ? <><div className="detailhead"><div><b>{selectedChat.platform} · {selectedChat.external_chat_id}</b><p className="meta">{selectedChat.product_name || selectedChat.sku || "Без товара"} · SLA: {selectedChat.response_sla_status || "—"} · {fmtMinutes(selectedChat.response_minutes)}</p></div><select value={selectedChat.internal_status || "new"} onChange={e => patchChat(selectedChat.id, { internal_status: e.target.value })}><option value="new">Новый</option><option value="in_progress">В работе</option><option value="waiting_customer">Ждем клиента</option><option value="waiting_marketplace">Ждем МП</option><option value="waiting_warehouse">Ждем склад</option><option value="closed">Закрыто</option></select></div><div className="chatBox">{chatMessages.length ? chatMessages.map(m => <div className={`chatMsg ${m.direction === "seller" ? "seller" : "customer"}`} key={m.id}><b>{m.direction === "seller" ? "Продавец/оператор" : "Клиент"}</b><p>{m.text || "—"}</p><em>{dt(m.sent_at || m.created_at)}</em></div>) : <Empty>История сообщений пока не загружена по этому чату</Empty>}</div><label>Ответ</label><textarea value={chatDraft} onChange={e => setChatDraft(e.target.value)} placeholder="Введите ответ клиенту" /><div className="actions"><button className="primary" onClick={sendChatReply}>Отправить / сохранить</button><button onClick={() => navigator.clipboard.writeText(chatDraft || "")}>Скопировать</button></div><label>Комментарий оператора</label><textarea value={selectedChat.operator_comment || ""} onChange={e => setSelectedChat(prev => ({ ...prev, operator_comment: e.target.value }))} onBlur={e => patchChat(selectedChat.id, { operator_comment: e.target.value })}/></> : <Empty>Выбери чат слева</Empty>}</div></div>}
+
+    {customerOpsTab === "returns" && <div className="panel"><h3>Заявки на возврат</h3>{returnsList.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Возврат</th><th>Заказ/отправление</th><th>SKU</th><th>Причина</th><th>Статус МП</th><th>Наш статус</th><th>Комментарий</th></tr></thead><tbody>{returnsList.map(r => <tr key={r.id}><td>{dt(r.created_at_marketplace || r.created_at)}</td><td><PlatformBadge value={r.platform}/></td><td>{r.external_return_id}</td><td>{r.posting_number || r.order_id || "—"}</td><td>{r.sku || "—"}</td><td>{r.reason || "—"}</td><td>{r.marketplace_status || "—"}</td><td><select value={r.internal_status || "new"} onChange={e => patchReturn(r.id, { internal_status: e.target.value })}><option value="new">Новая</option><option value="in_progress">В работе</option><option value="waiting_marketplace">Ждем МП</option><option value="waiting_customer">Ждем клиента</option><option value="waiting_warehouse">Ждем склад</option><option value="resolved">Решено</option><option value="closed">Закрыто</option></select></td><td><input value={r.operator_comment || ""} onChange={e => setReturnsList(prev => prev.map(x => x.id === r.id ? { ...x, operator_comment: e.target.value } : x))} onBlur={e => patchReturn(r.id, { operator_comment: e.target.value })}/></td></tr>)}</tbody></table> : <Empty>Заявок на возврат пока нет. Нажми «Синхронизировать Customer Ops». Если API недоступен токену, причина появится во вкладке «Диагностика API».</Empty>}</div>}
+
+    {customerOpsTab === "operations" && <div className="panel"><h3>Реестр операций</h3><div className="sectionFilters"><div><label>Тип операции</label><select value={operationType} onChange={e => setOperationType(e.target.value)}><option value="all">Все</option>{Object.entries(labels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}</select></div><div className="grow"><label>Статусы</label><div className="tags"><Badge>Синхр.: {byStatus.synced || 0}</Badge><Badge>Новые: {byStatus.new || 0}</Badge><Badge type="yellow">В работе: {byStatus.in_progress || 0}</Badge><Badge type="green">Закрыто: {byStatus.closed || 0}</Badge></div></div></div>{operationsSummary?.api_status?.message && <div className="message soft">{operationsSummary.api_status.message}</div>}{operations.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Тип</th><th>Документ</th><th>SKU</th><th>Кол-во</th><th>Сумма</th><th>Статус МП</th><th>Наш статус</th><th>Ответственный</th></tr></thead><tbody>{operations.map(x => <tr key={x.id}><td>{dt(x.occurred_at || x.created_at)}</td><td><PlatformBadge value={x.platform}/></td><td>{labels[x.operation_type] || x.operation_type}</td><td>{x.document_number || x.external_id}</td><td>{x.sku || "—"}</td><td>{x.quantity ?? "—"}</td><td>{x.amount || "—"}</td><td>{x.marketplace_status || "—"}</td><td>{x.cx_workflow_status || x.status || "—"}</td><td>{x.responsible || "—"}</td></tr>)}</tbody></table> : <Empty>Данных по операциям пока нет. Запусти синхронизацию операций или проверь диагностику API.</Empty>}</div>}
+
+    {customerOpsTab === "diagnostics" && <div className="panel"><h3>Диагностика API</h3><p className="meta">Если Action зеленый, но данных нет, причина должна быть здесь: нет прав токена, endpoint недоступен, маркетплейс вернул 403/404/429 или пустой ответ.</p>{rawErrors.length ? <table><thead><tr><th>Дата</th><th>Площадка</th><th>Блок</th><th>Ошибка</th></tr></thead><tbody>{rawErrors.map((e,i) => <tr key={i}><td>{dt(e.created_at)}</td><td>{e.platform}</td><td>{e.block}</td><td>{String(e.error || "—").slice(0, 260)}</td></tr>)}</tbody></table> : <Empty>Ошибок API в последних raw events нет. Если и данных нет, запусти Customer Ops Sync и обнови страницу.</Empty>}</div>}
+  </Section>;
+}  function renderFbo() {
     const b = booking || {};
     const update = (key, value) => setBooking(prev => ({ ...(prev || {}), [key]: value }));
     return <Section title="FBO Control Center" subtitle="Slot Hunter PRO: расписание, коэффициенты, уведомления и история" actions={<><button onClick={() => run("/wb-booking/check", "Проверка Slot Hunter")}>Проверить сейчас</button><button onClick={() => run("/wb-booking/notify-test", "Тест Telegram")}>Тест Telegram</button><button className="primary" onClick={() => saveBookingConfig(b)}>Сохранить</button></>}>

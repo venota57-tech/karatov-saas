@@ -3,6 +3,7 @@ name: KARATOV Customer Ops Sync
 on:
   workflow_dispatch:
   schedule:
+    # Chats + returns loop. Every 10 minutes; shifted away from exact peak minutes.
     - cron: "7-57/10 * * * *"
 
 permissions:
