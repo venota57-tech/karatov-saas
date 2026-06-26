@@ -3,8 +3,8 @@ name: KARATOV Hot Sync
 on:
   workflow_dispatch:
   schedule:
-    # Near-real-time on free infrastructure: every 5 minutes.
-    # Shifted away from exact :00/:05/:10 peak minutes.
+    # Free near-real-time: every 5 minutes.
+    # Shifted away from exact :00/:05/:10 peak minutes to reduce GitHub scheduler drops.
     - cron: "3-58/5 * * * *"
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
   hot-wb:
     name: WB hot sync
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
@@ -43,7 +43,7 @@ jobs:
   hot-ozon:
     name: Ozon hot sync
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
@@ -51,7 +51,10 @@ jobs:
       OZON_SYNC_ENABLED: "true"
       OZON_AUTO_SYNC_ENABLED: "false"
       GITHUB_SYNC_KIND: hot_ozon
-      GITHUB_SYNC_OZON_TAKE: "25"
+      # Hot Ozon must be lightweight. History/answered/backfill go to separate jobs.
+      GITHUB_SYNC_OZON_TAKE: "10"
+      GITHUB_SYNC_OZON_HOT_BLOCKS: "reviews_unanswered,questions_unanswered"
+      GITHUB_SYNC_STAGE_DEADLINE_SECONDS: "420"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

@@ -316,6 +316,109 @@ def run_sla() -> dict[str, Any]:
     finally:
         db.close()
 
+
+# === KARATOV HOT SYNC V4: lightweight Ozon hot path ===
+async def run_ozon_hot() -> dict[str, Any]:
+    """
+    Lightweight Ozon hot sync for 5-minute GitHub Actions runs.
+
+    Important:
+    - do not run answered/history/backfill here;
+    - do not let a slow Ozon block cancel the whole hot loop;
+    - keep created/updated counters in the SyncJob result for diagnostics.
+    """
+    from app.config import settings
+
+    raw_blocks = os.getenv("GITHUB_SYNC_OZON_HOT_BLOCKS", "reviews_unanswered,questions_unanswered")
+    blocks = [b.strip() for b in raw_blocks.split(",") if b.strip()]
+    deadline_seconds = float(os.getenv("GITHUB_SYNC_STAGE_DEADLINE_SECONDS", "420") or "420")
+    started_monotonic = time.monotonic()
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "platform": "OZON",
+        "mode": "hot_lightweight",
+        "blocks": [],
+        "received": 0,
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+    }
+
+    old_take = getattr(settings, "ozon_sync_take", 100)
+    old_timeout = getattr(settings, "ozon_request_timeout_seconds", 30)
+    old_pages = getattr(settings, "ozon_sync_pages_per_block_run", 1)
+
+    try:
+        settings.ozon_sync_take = int(os.getenv("GITHUB_SYNC_OZON_TAKE", "10") or "10")
+        settings.ozon_request_timeout_seconds = min(float(old_timeout or 30), 12.0)
+        settings.ozon_sync_pages_per_block_run = 1
+
+        for block in blocks:
+            elapsed = time.monotonic() - started_monotonic
+            if elapsed >= deadline_seconds:
+                result["ok"] = False
+                result["skipped"] += 1
+                result["blocks"].append({
+                    "platform": "OZON",
+                    "block": block,
+                    "stage": "hot",
+                    "status": "skipped_deadline",
+                    "elapsed_seconds": round(elapsed, 2),
+                })
+                continue
+
+            try:
+                if block in OZON_REVIEW_BLOCKS:
+                    page = await _ozon_page(block, "latest")
+                else:
+                    db = _new_session()
+                    try:
+                        page = await sync_ozon_block(db, block)
+                        db.commit()
+                    except Exception:
+                        _safe_close(db)
+                        raise
+                    finally:
+                        try:
+                            db.close()
+                        except Exception:
+                            pass
+
+                page = dict(page or {})
+                page.setdefault("platform", "OZON")
+                page.setdefault("block", block)
+                page["stage"] = "hot"
+                result["blocks"].append(page)
+                result["received"] += int(page.get("received", 0) or 0)
+                result["created"] += int(page.get("created", 0) or 0)
+                result["updated"] += int(page.get("updated", 0) or 0)
+
+            except Exception as exc:
+                result["ok"] = False
+                result["blocks"].append({
+                    "platform": "OZON",
+                    "block": block,
+                    "stage": "hot",
+                    "status": "failed",
+                    "error": str(exc),
+                })
+
+    finally:
+        try:
+            settings.ozon_sync_take = old_take
+            settings.ozon_request_timeout_seconds = old_timeout
+            settings.ozon_sync_pages_per_block_run = old_pages
+        except Exception:
+            pass
+
+    # No new rows is not a technical failure. It means the hot window had no delta.
+    result["has_delta"] = bool(result["created"] or result["updated"])
+    result["elapsed_seconds"] = round(time.monotonic() - started_monotonic, 2)
+    return result
+
+# === /KARATOV HOT SYNC V4 ===
+
 async def run_stage(name: str, fn: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
     stage_job = _create_job("github_sync_block", platform="ALL", block=name, payload={"stage": name})
     try:
@@ -336,7 +439,7 @@ async def run_all(kind: str) -> dict[str, Any]:
     if kind == "hot_wb":
         result["stages"]["hot_wb"] = await run_stage("hot_wb", lambda: run_wb(cycles=1, blocks=WB_FAST_BLOCKS))
     elif kind == "hot_ozon":
-        result["stages"]["hot_ozon"] = await run_stage("hot_ozon", lambda: run_ozon(max_pages=0, include_latest=True, include_backfill=False, include_questions=True))
+        result["stages"]["hot_ozon"] = await run_stage("hot_ozon", run_ozon_hot)
     elif kind == "backfill":
         result["stages"]["wb_backfill"] = await run_stage("wb_backfill", lambda: run_wb(cycles=max_wb_cycles, blocks=WB_ARCHIVE_BLOCKS))
         result["stages"]["ozon_backfill"] = await run_stage("ozon_backfill", lambda: run_ozon(max_pages=max_ozon_pages, include_latest=False, include_backfill=True, include_questions=False))
