@@ -3,7 +3,8 @@ name: KARATOV Backfill Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: '7,37 * * * *'
+    # Archive/backfill is intentionally slower than hot sync to avoid WB/Ozon rate limits.
+    - cron: "17 * * * *"
 
 concurrency:
   group: karatov-backfill-sync
@@ -11,24 +12,27 @@ concurrency:
 
 jobs:
   backfill:
+    name: Archive backfill
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
+      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
       WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: backfill
-      GITHUB_SYNC_MAX_OZON_PAGES: "30"
-      GITHUB_SYNC_MAX_WB_CYCLES: "2"
+      GITHUB_SYNC_MAX_OZON_PAGES: "20"
+      GITHUB_SYNC_MAX_WB_CYCLES: "1"
       GITHUB_SYNC_OZON_TAKE: "25"
+      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt

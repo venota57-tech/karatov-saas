@@ -1,0 +1,65 @@
+name: KARATOV Marketplace Sync Tick
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 5 minutes, shifted away from :00/:05 GitHub Actions peak minutes.
+    - cron: "3-58/5 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karatov-marketplace-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Trigger marketplace sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          test -n "${{ secrets.SYNC_TICK_URL }}" || (echo "Missing secret: SYNC_TICK_URL" && exit 1)
+          test -n "${{ secrets.SYNC_TRIGGER_TOKEN }}" || (echo "Missing secret: SYNC_TRIGGER_TOKEN" && exit 1)
+
+      - name: Trigger KARATOV backend sync
+        shell: bash
+        env:
+          SYNC_TICK_URL: ${{ secrets.SYNC_TICK_URL }}
+          SYNC_TRIGGER_TOKEN: ${{ secrets.SYNC_TRIGGER_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          echo "Triggering KARATOV marketplace sync tick..."
+
+          HTTP_CODE="$(
+            curl --silent --show-error --location \
+              --connect-timeout 20 \
+              --max-time 540 \
+              --retry 3 \
+              --retry-delay 10 \
+              --retry-all-errors \
+              --output /tmp/karatov_sync_response.json \
+              --write-out "%{http_code}" \
+              --request POST "$SYNC_TICK_URL" \
+              --header "Authorization: Bearer $SYNC_TRIGGER_TOKEN" \
+              --header "X-KARATOV-Source: github-actions" \
+              --header "Content-Type: application/json" \
+              --data '{"source":"github_actions","mode":"scheduled_tick","marketplaces":["wb","ozon"],"blocks":["reviews","questions","archive","operations"]}'
+          )"
+
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response:"
+          cat /tmp/karatov_sync_response.json || true
+          echo
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Sync trigger failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "KARATOV marketplace sync tick accepted."

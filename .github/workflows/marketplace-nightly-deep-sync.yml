@@ -3,7 +3,7 @@ name: KARATOV Nightly Deep Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: '17 23 * * *'
+    - cron: "37 23 * * *"
 
 concurrency:
   group: karatov-nightly-deep-sync
@@ -11,24 +11,27 @@ concurrency:
 
 jobs:
   nightly:
+    name: Nightly deep sync
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
+      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
       WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: nightly
-      GITHUB_SYNC_MAX_OZON_PAGES: "60"
-      GITHUB_SYNC_MAX_WB_CYCLES: "4"
+      GITHUB_SYNC_MAX_OZON_PAGES: "40"
+      GITHUB_SYNC_MAX_WB_CYCLES: "2"
       GITHUB_SYNC_OZON_TAKE: "25"
+      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt

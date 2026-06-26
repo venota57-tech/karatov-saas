@@ -1,36 +1,41 @@
-name: KARATOV Operations Sync
+Хname: KARATOV Marketplace Sync Manual
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "22 * * * *"
+    inputs:
+      kind:
+        description: "Sync kind"
+        required: false
+        default: "all"
 
 concurrency:
-  group: karatov-operations-sync
+  group: karatov-marketplace-sync-manual
   cancel-in-progress: false
 
 jobs:
-  operations:
-    name: Operations sync
+  manual:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
-      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+      WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
-      GITHUB_SYNC_KIND: operations
-      PYTHONUNBUFFERED: "1"
+      OZON_AUTO_SYNC_ENABLED: "false"
+      GITHUB_SYNC_KIND: ${{ github.event.inputs.kind || 'all' }}
+      GITHUB_SYNC_MAX_OZON_PAGES: "30"
+      GITHUB_SYNC_MAX_WB_CYCLES: "3"
+      GITHUB_SYNC_OZON_TAKE: "25"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run operations sync
+      - name: Run manual sync
         working-directory: backend
         run: python -m app.github_sync_runner

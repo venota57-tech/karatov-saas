@@ -3,7 +3,7 @@ name: KARATOV Operations Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: "22 * * * *"
+    - cron: '12,42 * * * *'
 
 concurrency:
   group: karatov-operations-sync
@@ -11,23 +11,20 @@ concurrency:
 
 jobs:
   operations:
-    name: Operations sync
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
-      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: operations
-      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
