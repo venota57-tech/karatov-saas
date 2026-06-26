@@ -208,6 +208,10 @@ function Empty({ children = "Данных нет" }) { return <div className="em
 function App() {
   const [page, setPage] = useState("tower");
   const [platform, setPlatform] = useState("ALL");
+  const platformRef = useRef("ALL");
+  useEffect(() => {
+    platformRef.current = normPlatform(platform || "ALL");
+  }, [platform]);
   const [state, setState] = useState("unanswered");
   const [kind, setKind] = useState("reviews");
   const [search, setSearch] = useState("");
