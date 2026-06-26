@@ -3,7 +3,6 @@ name: KARATOV Customer Ops Sync
 on:
   workflow_dispatch:
   schedule:
-    # Chats + returns loop. Every 10 minutes; shifted away from exact peak minutes.
     - cron: "7-57/10 * * * *"
 
 permissions:
@@ -17,7 +16,7 @@ jobs:
   customer-ops:
     name: Customer Ops sync
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 14
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
@@ -26,9 +25,10 @@ jobs:
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
       GITHUB_SYNC_KIND: customer_ops
       GITHUB_CUSTOMER_OPS_MODE: full
-      CUSTOMER_OPS_MAX_CHATS: "40"
-      CUSTOMER_OPS_MAX_MESSAGES_PER_CHAT: "50"
-      CUSTOMER_OPS_MAX_RETURNS: "80"
+      CUSTOMER_OPS_MAX_CHATS: "60"
+      CUSTOMER_OPS_MAX_MESSAGES_PER_CHAT: "100"
+      CUSTOMER_OPS_MAX_RETURNS: "150"
+      CUSTOMER_OPS_REQUEST_TIMEOUT: "20"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

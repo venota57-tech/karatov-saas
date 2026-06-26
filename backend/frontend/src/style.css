@@ -22,3 +22,8 @@
 .chatMsg p { margin: 6px 0; white-space: pre-wrap; }
 .chatMsg em { font-size: 12px; opacity: .65; }
 .clickable { cursor: pointer; }
+
+/* Customer Ops real sync v2.1 */
+.stickyPanel { position: sticky; top: 18px; align-self: flex-start; }
+.chatBox { min-height: 420px; }
+.chatMsg p { white-space: pre-wrap; word-break: break-word; }

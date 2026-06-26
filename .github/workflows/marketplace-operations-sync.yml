@@ -3,7 +3,6 @@ name: KARATOV Operations Sync
 on:
   workflow_dispatch:
   schedule:
-    # Heavy operations loop: hourly, staggered away from hot/customer/backfill sync.
     - cron: "22 * * * *"
 
 permissions:
@@ -26,8 +25,7 @@ jobs:
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: operations
-      GITHUB_CUSTOMER_OPS_MODE: operations
-      CUSTOMER_OPS_MAX_RETURNS: "120"
+      CUSTOMER_OPS_MAX_RETURNS: "150"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
