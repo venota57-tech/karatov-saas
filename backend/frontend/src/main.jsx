@@ -229,7 +229,7 @@ function App() {
   const [booking, setBooking] = useState(null);
   const [operations, setOperations] = useState([]);
   const [operationsSummary, setOperationsSummary] = useState(null);
-  const [operationType, setOperationType] = useState("all");
+  const [operationType, setOperationType] = useState("all"); const operationTypeRef = useRef("all"); useEffect(() => { operationTypeRef.current = operationType || "all"; }, [operationType]);
   const [roleRights, setRoleRights] = useState(loadSavedRights);
   const refreshRequestSeq = useRef(0);
   const productsRequestSeq = useRef(0);
@@ -243,7 +243,7 @@ function App() {
 
   const localMetrics = useMemo(() => buildMetrics(platformItems), [platformItems]);
   const metrics = useMemo(() => {
-    const c = diagnostics?.counts;
+    const c = (normPlatform(diagnostics?.platform || platform) === normPlatform(platform) ? diagnostics?.counts : null);
     if (c) {
       const reviewsTotal = Number(c.reviews_total || 0);
       const questionsTotal = Number(c.questions_total || 0);
@@ -269,7 +269,7 @@ function App() {
 
   const allMetrics = useMemo(() => {
     const base = buildMetrics(rawItems);
-    const c = diagnostics?.counts;
+    const c = (normPlatform(diagnostics?.platform || platform) === normPlatform(platform) ? diagnostics?.counts : null);
     if (c) {
       const reviewsTotal = Number(c.reviews_total || 0);
       const questionsTotal = Number(c.questions_total || 0);
@@ -294,7 +294,7 @@ function App() {
 
     async function fastDiagnostics() {
       try {
-        const data = await api(`/system/dashboard?platform=${encodeURIComponent(normPlatform(platform || "ALL"))}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: normPlatform(platform || "ALL"), counts: null, source: "frontend_dashboard_timeout" }));
+        const data = await api(`/system/dashboard?platform=${encodeURIComponent(platformRef.current || "ALL")}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: platformRef.current || "ALL", counts: null, source: "frontend_dashboard_timeout" }));
         if (alive && data) setDiagnostics(data);
       } catch (e) {
         console.warn("fast diagnostics failed", e);
@@ -426,7 +426,7 @@ function App() {
         api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=100`, { timeoutMs: 7000 }).catch(() => null),
         api(`/operations/summary?platform=${requestedPlatform}`, { timeoutMs: 7000 }).catch(() => null),
       ]);
-      if (requestId !== refreshRequestSeq.current) return;
+      if (requestId !== refreshRequestSeq.current || requestedPlatform !== (platformRef.current || "ALL")) return;
       if (r.status === "fulfilled" && r.value) setReviews(asList(r.value));
       if (q.status === "fulfilled" && q.value) setQuestions(asList(q.value));
       if (d.status === "fulfilled") setDiagnostics(d.value);
@@ -434,8 +434,8 @@ function App() {
       if (p.status === "fulfilled") setPublishHistory(p.value);
       if (rulesData.status === "fulfilled") setRules(rulesData.value || {});
       if (b.status === "fulfilled") setBooking(b.value);
-      if (opsData.status === "fulfilled" && opsData.value) setOperations(opsData.value?.items || []);
-      if (opsSummaryData.status === "fulfilled" && opsSummaryData.value) setOperationsSummary(opsSummaryData.value);
+      if (opsData.status === "fulfilled" && opsData.value) setOperations(prev => { const items = opsData.value?.items || []; return (items.length || requestedPlatform !== "ALL") ? items : prev; });
+      if (opsSummaryData.status === "fulfilled" && opsSummaryData.value) setOperationsSummary(prev => { const total = Number(opsSummaryData.value?.total || opsSummaryData.value?.total_operations || 0); return (total || requestedPlatform !== "ALL") ? opsSummaryData.value : prev; });
       setLastRefresh(new Date().toISOString());
       if (show) setMessage("Данные обновлены");
     } catch (e) {

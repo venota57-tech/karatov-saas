@@ -3,7 +3,7 @@ name: KARATOV Nightly Deep Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: '10 22 * * *'
+    - cron: '17 23 * * *'
 
 concurrency:
   group: karatov-nightly-deep-sync
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   nightly:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
@@ -21,7 +21,7 @@ jobs:
       WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: nightly
-      GITHUB_SYNC_MAX_OZON_PAGES: "80"
+      GITHUB_SYNC_MAX_OZON_PAGES: "60"
       GITHUB_SYNC_MAX_WB_CYCLES: "4"
       GITHUB_SYNC_OZON_TAKE: "25"
     steps:

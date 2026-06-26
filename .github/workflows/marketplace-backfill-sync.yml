@@ -21,7 +21,7 @@ jobs:
       WB_SYNC_MODE: both
       OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: backfill
-      GITHUB_SYNC_MAX_OZON_PAGES: "40"
+      GITHUB_SYNC_MAX_OZON_PAGES: "30"
       GITHUB_SYNC_MAX_WB_CYCLES: "2"
       GITHUB_SYNC_OZON_TAKE: "25"
     steps:

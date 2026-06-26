@@ -97,3 +97,9 @@
 - Runner supports explicit kinds: hot_wb, hot_ozon, backfill, answers, operations, nightly.
 - UI polling is locked to the currently selected marketplace and should not revert Control Tower to ALL after 10-15 seconds.
 - Operations UI no longer clears existing data on an empty sync response; empty live operation sync is reported as a warning, not a destructive zero.
+
+## RC1.7.8 Scheduler Modes + UI Platform Lock
+- Restored explicit GitHub runner modes: hot_wb, hot_ozon, backfill and nightly.
+- Rewrote split-cadence workflows with canonical cron schedules and removed duplicate Nightly workflow definitions.
+- Fixed Control Tower polling so an interval created on initial ALL render cannot overwrite the selected WB/Ozon dashboard.
+- Prevented temporary empty operations responses from wiping ALL operations view.
