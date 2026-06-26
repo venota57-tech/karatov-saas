@@ -1,21 +1,18 @@
-name: KARATOV Marketplace Sync Manual
+name: KARATOV Hot Sync
 
 on:
   workflow_dispatch:
-    inputs:
-      kind:
-        description: "Sync kind: all, hot, answers, backfill, operations, analytics"
-        required: false
-        default: "all"
+  schedule:
+    - cron: "*/5 * * * *"
 
 concurrency:
-  group: karatov-marketplace-sync-manual
+  group: karatov-hot-sync
   cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
@@ -25,14 +22,12 @@ jobs:
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OZON_SYNC_ENABLED: "true"
       OZON_AUTO_SYNC_ENABLED: "false"
       WB_SYNC_MODE: "both"
       WB_AUTO_SYNC_ENABLED: "false"
-      GITHUB_SYNC_KIND: ${{ github.event.inputs.kind || 'all' }}
-      GITHUB_SYNC_MAX_OZON_PAGES: "60"
-      GITHUB_SYNC_MAX_WB_CYCLES: "4"
+      GITHUB_SYNC_KIND: "hot"
+      GITHUB_SYNC_MAX_WB_CYCLES: "2"
       GITHUB_SYNC_OZON_TAKE: "25"
       PYTHONUNBUFFERED: "1"
     steps:

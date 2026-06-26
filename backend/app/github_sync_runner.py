@@ -19,7 +19,9 @@ from app.services.sync_service import run_sync_wb_block_with_status
 
 OZON_REVIEW_BLOCKS = ["reviews_unanswered", "reviews_answered"]
 OZON_QUESTION_BLOCKS = ["questions_unanswered", "questions_answered"]
-WB_BLOCKS = ["feedbacks_unanswered", "questions_unanswered", "feedbacks_answered", "questions_answered", "feedbacks_archive"]
+WB_FAST_BLOCKS = ["feedbacks_unanswered", "questions_unanswered"]
+WB_ANSWER_BLOCKS = ["feedbacks_answered", "questions_answered"]
+WB_ARCHIVE_BLOCKS = ["feedbacks_archive"]
 
 
 def _now() -> datetime:
@@ -89,7 +91,6 @@ def _create_job(job_type: str, platform: str = "ALL", block: str | None = None, 
         db.add(row)
         db.flush()
         return int(row.id)
-
     return _with_db_retry(f"create_job:{job_type}:{platform}:{block}", work)
 
 
@@ -103,7 +104,6 @@ def _finish_job(job_id: int, status: str, result: dict[str, Any] | None = None, 
         row.last_error = error
         row.finished_at = _now()
         row.updated_at = _now()
-
     _with_db_retry(f"finish_job:{job_id}", work)
 
 
@@ -119,7 +119,6 @@ def _cursor_row(db: Session, platform: str, block: str) -> SyncCursor:
 def _read_cursor(platform: str, block: str) -> str | None:
     def work(db: Session) -> str | None:
         return _cursor_row(db, platform, block).cursor
-
     return _with_db_retry(f"read_cursor:{platform}:{block}", work)
 
 
@@ -133,7 +132,6 @@ def _save_cursor(platform: str, block: str, cursor: str | None, status: str, pay
         row.updated_at = _now()
         if status in {"active", "finished"} and not error:
             row.last_success_at = _now()
-
     _with_db_retry(f"save_cursor:{platform}:{block}", work)
 
 
@@ -143,6 +141,11 @@ def _ensure_schema_once() -> None:
         if engine.dialect.name == "postgresql":
             db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS marketplace_status VARCHAR(128)"))
             db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS cx_workflow_status VARCHAR(64) DEFAULT 'new_to_review'"))
+            db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS document_number VARCHAR(128)"))
+            db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS document_date TIMESTAMP"))
+            db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS supply_id VARCHAR(128)"))
+            db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS posting_number VARCHAR(128)"))
+            db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN IF NOT EXISTS total_amount NUMERIC"))
         else:
             cols = {c["name"] for c in inspect(engine).get_columns("marketplace_operations")}
             if "marketplace_status" not in cols:
@@ -151,7 +154,6 @@ def _ensure_schema_once() -> None:
                 db.execute(text("ALTER TABLE marketplace_operations ADD COLUMN cx_workflow_status VARCHAR(64) DEFAULT 'new_to_review'"))
         db.execute(text("UPDATE marketplace_operations SET status='synced' WHERE status='new'"))
         db.execute(text("UPDATE marketplace_operations SET cx_workflow_status='new_to_review' WHERE cx_workflow_status IS NULL"))
-
     _with_db_retry("ensure_schema", work)
 
 
@@ -176,7 +178,6 @@ def _persist_ozon_cursor(block: str, mode: str, result: dict[str, Any]) -> None:
 
 async def _ozon_page(block: str, mode: str) -> dict[str, Any]:
     from app.config import settings
-
     _restore_ozon_cursor(block, mode)
     old_pages = getattr(settings, "ozon_sync_pages_per_block_run", 1)
     old_take = getattr(settings, "ozon_sync_take", 100)
@@ -220,17 +221,41 @@ async def _ozon_page(block: str, mode: str) -> dict[str, Any]:
     raise last  # type: ignore[misc]
 
 
-async def run_ozon(max_pages: int) -> dict[str, Any]:
-    result: dict[str, Any] = {"ok": True, "platform": "OZON", "blocks": [], "received": 0, "created": 0, "updated": 0}
-
+async def run_ozon_latest() -> dict[str, Any]:
+    result: dict[str, Any] = {"ok": True, "platform": "OZON", "mode": "latest", "blocks": [], "received": 0, "created": 0, "updated": 0}
     for block in OZON_REVIEW_BLOCKS:
         try:
-            latest = await _ozon_page(block, "latest")
-            result["blocks"].append({"stage": "latest", **latest})
+            res = await _ozon_page(block, "latest")
+            result["blocks"].append({"stage": "latest", **res})
+            result["received"] += int(res.get("received", 0) or 0)
+            result["created"] += int(res.get("created", 0) or 0)
+            result["updated"] += int(res.get("updated", 0) or 0)
         except Exception as exc:
             result["ok"] = False
             result["blocks"].append({"platform": "OZON", "block": block, "stage": "latest", "status": "failed", "error": str(exc)})
+    for block in OZON_QUESTION_BLOCKS:
+        db = _new_session()
+        try:
+            qres = await sync_ozon_block(db, block)
+            db.commit()
+            result["blocks"].append({"stage": "latest", **qres})
+            result["received"] += int(qres.get("received", 0) or 0)
+            result["created"] += int(qres.get("created", 0) or 0)
+            result["updated"] += int(qres.get("updated", 0) or 0)
+        except Exception as exc:
+            _safe_close(db)
+            result["ok"] = False
+            result["blocks"].append({"platform": "OZON", "block": block, "status": "failed", "error": str(exc)})
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+    return result
 
+
+async def run_ozon_backfill(max_pages: int) -> dict[str, Any]:
+    result: dict[str, Any] = {"ok": True, "platform": "OZON", "mode": "backfill", "blocks": [], "received": 0, "created": 0, "updated": 0}
     for block in OZON_REVIEW_BLOCKS:
         seen: set[str | None] = set()
         for _ in range(max_pages):
@@ -253,27 +278,6 @@ async def run_ozon(max_pages: int) -> dict[str, Any]:
                 break
             if cursor:
                 seen.add(cursor)
-
-    for block in OZON_QUESTION_BLOCKS:
-        db = _new_session()
-        try:
-            qres = await sync_ozon_block(db, block)
-            db.commit()
-            qres["stage"] = "latest"
-            qres["note"] = "Current question adapter imports latest page; cursor support depends on Ozon response."
-            result["blocks"].append(qres)
-            result["received"] += int(qres.get("received", 0) or 0)
-            result["created"] += int(qres.get("created", 0) or 0)
-            result["updated"] += int(qres.get("updated", 0) or 0)
-        except Exception as exc:
-            _safe_close(db)
-            result["ok"] = False
-            result["blocks"].append({"platform": "OZON", "block": block, "status": "failed", "error": str(exc)})
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
     return result
 
 
@@ -284,7 +288,7 @@ async def _wb_block(block: str, cycle: int) -> dict[str, Any]:
         wbsvc = None
     if wbsvc and hasattr(wbsvc, "_block_state"):
         saved = _read_cursor("WB", f"{block}:page")
-        if saved and block in {"feedbacks_answered", "questions_answered", "feedbacks_archive"}:
+        if saved and block in set(WB_ANSWER_BLOCKS + WB_ARCHIVE_BLOCKS):
             wbsvc._block_state.setdefault(block, {})["next_page"] = int(saved)
     db = _new_session()
     try:
@@ -300,14 +304,15 @@ async def _wb_block(block: str, cycle: int) -> dict[str, Any]:
             pass
     if wbsvc and hasattr(wbsvc, "_block_state"):
         next_page = wbsvc._block_state.setdefault(block, {}).get("next_page", 0)
-        _save_cursor("WB", f"{block}:page", str(next_page or 0), "active", {"last_result": res})
+        cursor_block = f"{block}:page" if block in set(WB_ANSWER_BLOCKS + WB_ARCHIVE_BLOCKS) else block
+        _save_cursor("WB", cursor_block, str(next_page or 0) if cursor_block.endswith(":page") else None, "active", {"last_result": res})
     return res
 
 
-async def run_wb(cycles: int) -> dict[str, Any]:
+async def run_wb(blocks: list[str], cycles: int) -> dict[str, Any]:
     result = {"ok": True, "platform": "WB", "cycles": cycles, "blocks": []}
     for cycle in range(1, max(1, cycles) + 1):
-        for block in WB_BLOCKS:
+        for block in blocks:
             try:
                 result["blocks"].append(await _wb_block(block, cycle))
             except Exception as exc:
@@ -358,46 +363,52 @@ def run_sla() -> dict[str, Any]:
 
 
 async def run_stage(name: str, fn: Callable[[], Any]) -> dict[str, Any]:
-    stage_job = _create_job("github_sync_block", platform="ALL", block=name, payload={"stage": name})
+    job = _create_job("github_sync_block", platform="ALL", block=name, payload={"stage": name})
     try:
         res = await fn()
-        _finish_job(stage_job, "success" if res.get("ok", True) else "partial", result=res)
+        _finish_job(job, "success" if res.get("ok", True) else "partial", result=res)
         return {"ok": bool(res.get("ok", True)), "result": res}
     except Exception as exc:
         err = str(exc)
-        _finish_job(stage_job, "failed", result={"stage": name}, error=err)
+        _finish_job(job, "failed", result={"stage": name}, error=err)
         return {"ok": False, "error": err}
 
 
 async def run_all(kind: str) -> dict[str, Any]:
-    root_job = _create_job("github_sync_runner", platform="ALL", payload={"kind": kind})
+    root = _create_job("github_sync_runner", platform="ALL", payload={"kind": kind})
     max_ozon_pages = int(os.getenv("GITHUB_SYNC_MAX_OZON_PAGES", "40"))
-    max_wb_cycles = int(os.getenv("GITHUB_SYNC_MAX_WB_CYCLES", "6"))
+    max_wb_cycles = int(os.getenv("GITHUB_SYNC_MAX_WB_CYCLES", "3"))
     _ensure_schema_once()
     result: dict[str, Any] = {"ok": True, "kind": kind, "started_at": _now().isoformat(), "stages": {}}
-    if kind in {"all", "ozon"}:
-        result["stages"]["ozon"] = await run_stage("ozon", lambda: run_ozon(max_pages=max_ozon_pages))
-    if kind in {"all", "wb"}:
-        result["stages"]["wb"] = await run_stage("wb", lambda: run_wb(cycles=max_wb_cycles))
-    if kind in {"all", "operations"}:
-        result["stages"]["operations"] = await run_stage("operations", run_operations)
+
+    if kind in {"all", "hot"}:
+        result["stages"]["ozon_latest"] = await run_stage("ozon_latest", run_ozon_latest)
+        result["stages"]["wb_fast"] = await run_stage("wb_fast", lambda: run_wb(WB_FAST_BLOCKS, cycles=max_wb_cycles))
     if kind in {"all", "answers"}:
         result["stages"]["answers"] = await run_stage("answers", run_answers)
-    if kind in {"all", "analytics"}:
+        result["stages"]["wb_answered"] = await run_stage("wb_answered", lambda: run_wb(WB_ANSWER_BLOCKS, cycles=1))
+    if kind in {"all", "backfill"}:
+        result["stages"]["ozon_backfill"] = await run_stage("ozon_backfill", lambda: run_ozon_backfill(max_pages=max_ozon_pages))
+        result["stages"]["wb_archive"] = await run_stage("wb_archive", lambda: run_wb(WB_ARCHIVE_BLOCKS + WB_ANSWER_BLOCKS, cycles=max_wb_cycles))
+    if kind in {"all", "operations"}:
+        result["stages"]["operations"] = await run_stage("operations", run_operations)
+    if kind in {"all", "analytics", "answers"}:
         try:
             result["stages"]["analytics"] = {"ok": True, "result": run_sla()}
         except Exception as exc:
             result["stages"]["analytics"] = {"ok": False, "error": str(exc)}
+
     result["ok"] = any(v.get("ok") for v in result["stages"].values()) if result["stages"] else True
     result["status"] = "success" if all(v.get("ok") for v in result["stages"].values()) else "partial"
-    _finish_job(root_job, result["status"], result=result, error=None if result["ok"] else "all stages failed")
+    _finish_job(root, result["status"], result=result, error=None if result["ok"] else "all stages failed")
     return result
 
 
 def main() -> None:
     kind = (os.getenv("GITHUB_SYNC_KIND") or "all").strip().lower()
-    if kind not in {"all", "ozon", "wb", "operations", "answers", "analytics"}:
-        raise SystemExit(f"Unsupported GITHUB_SYNC_KIND={kind}")
+    allowed = {"all", "hot", "answers", "backfill", "operations", "analytics"}
+    if kind not in allowed:
+        raise SystemExit(f"Unsupported GITHUB_SYNC_KIND={kind}; allowed={sorted(allowed)}")
     print(asyncio.run(run_all(kind)), flush=True)
 
 

@@ -83,3 +83,10 @@
 - Ozon page size is reduced for GitHub runner only; this is a technical chunk size, not a business ceiling.
 - Ozon latest pass and persisted backfill pass continue through SyncCursor.
 - Failed stages are written to SyncJob without PendingRollback masking the real cause.
+
+## RC1.7.6 Split Cadence Marketplace Sync
+- Accepted split-cadence strategy: hot every 5 minutes, answers every 10 minutes, backfill every 30 minutes, operations every 30 minutes, nightly deep sync once per day.
+- Monolithic marketplace-sync workflow is manual-only to reduce API/DB pressure.
+- Runner supports kind=hot, answers, backfill, operations, analytics and all.
+- Fresh marketplace data is prioritized: WB unanswered feedbacks/questions and Ozon latest review/question pages run on the lowest free interval.
+- Archive and operations are isolated from fresh sync so they cannot block operator-facing data.

@@ -192,3 +192,10 @@ Manual run:
 - Published answers enrichment is run as part of the scheduled runner.
 - Operations sync is included in the scheduled runner; meaningless operation status=new is migrated to synced/new_to_review.
 - Added /sync-runner/status and /sync-runner/sla with response-speed analytics for reviews and questions.
+
+## RC1.7.6 Split Cadence Marketplace Sync
+- Accepted split-cadence strategy: hot every 5 minutes, answers every 10 minutes, backfill every 30 minutes, operations every 30 minutes, nightly deep sync once per day.
+- Monolithic marketplace-sync workflow is manual-only to reduce API/DB pressure.
+- Runner supports kind=hot, answers, backfill, operations, analytics and all.
+- Fresh marketplace data is prioritized: WB unanswered feedbacks/questions and Ozon latest review/question pages run on the lowest free interval.
+- Archive and operations are isolated from fresh sync so they cannot block operator-facing data.

@@ -167,6 +167,7 @@ def questions_priority_rc170(
 
 
 for route in [
+    "app.routes.sync_truth",
     "app.routes.sync_runner",
     "app.routes.cron",
     "app.routes.full_sync",
