@@ -1,0 +1,23 @@
+name: KARATOV Scheduler Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "11 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  scheduler-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print workflow schedules
+        run: |
+          echo "Workflow schedule audit"
+          for f in .github/workflows/*.yml; do
+            echo "---- $f"
+            grep -n "workflow_dispatch:\|schedule:\|cron:" "$f" || true
+          done

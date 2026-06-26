@@ -9,12 +9,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: karatov-customer_ops-sync
+  group: karatov-customer-ops-sync
   cancel-in-progress: false
 
 jobs:
   customer-ops:
-    name: KARATOV Customer Ops Sync
     runs-on: ubuntu-latest
     timeout-minutes: 14
     env:
@@ -23,26 +22,18 @@ jobs:
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OZON_SYNC_ENABLED: "true"
       GITHUB_SYNC_KIND: customer_ops
-      GITHUB_CUSTOMER_OPS_MODE: full
-      CUSTOMER_OPS_MAX_CHATS: "80"
-      CUSTOMER_OPS_MAX_MESSAGES_PER_CHAT: "120"
-      CUSTOMER_OPS_MAX_RETURNS: "200"
-      CUSTOMER_OPS_REQUEST_TIMEOUT: "22"
-      OPERATIONS_MAX_ROWS: "500"
-      OPERATIONS_MAX_PAGES: "4"
-      OZON_ACT_LIMIT: "500"
+      STABLE_OS_MAX_ROWS: "120"
+      STABLE_OS_MAX_PAGES: "3"
+      STABLE_OS_REQUEST_TIMEOUT: "22"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+        with: { python-version: "3.12" }
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run sync
+      - name: Run Stable Customer Ops Sync
         working-directory: backend
-        run: python -m app.github_sync_runner
+        run: python -m app.stable_sync_entry
