@@ -420,8 +420,8 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api(`/reviews?platform=${requestedPlatform}&limit=1000`).catch(() => []),
-        api(`/questions?platform=${requestedPlatform}&limit=1000`).catch(() => []),
+        api(`/reviews?platform=${requestedPlatform}&limit=1000`).catch(() => null),
+        api(`/questions?platform=${requestedPlatform}&limit=1000`).catch(() => null),
         api(`/system/dashboard?platform=${encodeURIComponent(requestedPlatform)}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: requestedPlatform, counts: null, source: "frontend_dashboard_timeout" })),
         api("/ops/sync-history", { timeoutMs: 4000 }).catch(() => null),
         api("/ops/publish-history", { timeoutMs: 4000 }).catch(() => null),
@@ -433,7 +433,7 @@ function App() {
       if (requestId !== refreshRequestSeq.current || requestedPlatform !== (platformRef.current || "ALL")) return;
       if (r.status === "fulfilled" && r.value) setReviews(asList(r.value));
       if (q.status === "fulfilled" && q.value) setQuestions(asList(q.value));
-      if (d.status === "fulfilled") setDiagnostics(d.value);
+      if (d.status === "fulfilled" && d.value) setDiagnostics(prev => (typeof preserveCountsPayload === "function" ? preserveCountsPayload(prev, d.value) : d.value));
       if (s.status === "fulfilled") setSyncHistory(s.value);
       if (p.status === "fulfilled") setPublishHistory(p.value);
       if (rulesData.status === "fulfilled") setRules(rulesData.value || {});
@@ -553,15 +553,41 @@ function App() {
     finally { setLoading(false); }
   }
 
-  async function run(path, label) {
-    setLoading(true); setMessage(`Запускаю: ${label}`);
-    try {
-      const res = await api(path, { method: "POST" });
-      await refreshAll(false);
-      setMessage(`${label}: ${res?.message || "готово"}`);
-    } catch (e) { setMessage(`Ошибка: ${e.message}`); }
-    finally { setLoading(false); }
+  async function startBackgroundSync(kindName, label, mode = "full") {
+  setLoading(true);
+  setMessage(`Запускаю в фоне: ${label}`);
+  try {
+    const res = await api(`/sync-control/start?kind=${kindName}&platform=${platform}&mode=${mode}`, { method: "POST", timeoutMs: 15000 });
+    if (res?.already_running) {
+      setMessage(`${label}: уже выполняется в фоне. Данные не обнуляю, обновлю через несколько секунд.`);
+    } else if (res?.started) {
+      setMessage(`${label}: запущено в фоне. Можно не ждать — интерфейс не будет очищаться.`);
+    } else {
+      setMessage(`${label}: ${res?.error || "не запущено"}`);
+    }
+    setTimeout(() => { refreshAll(false); loadCustomerOps(false); }, 7000);
+    setTimeout(() => { refreshAll(false); loadCustomerOps(false); }, 22000);
+  } catch (e) {
+    setMessage(`${label}: ошибка запуска фоновой задачи: ${e.message}. Последние данные сохранены на экране.`);
+  } finally {
+    setLoading(false);
   }
+} async function run(path, label) {
+  if (String(path || "").startsWith("/operations/sync")) {
+    return startBackgroundSync("operations", label || "Синхронизация Operations Hub", "full");
+  }
+  setLoading(true);
+  setMessage(`Запускаю: ${label}`);
+  try {
+    const res = await api(path, { method: "POST", timeoutMs: 30000 });
+    await refreshAll(false);
+    setMessage(`${label}: ${res?.message || "готово"}`);
+  } catch (e) {
+    setMessage(`Ошибка: ${e.message}. Последние данные сохранены на экране.`);
+  } finally {
+    setLoading(false);
+  }
+}
 
   
 async function loadCustomerOps(show = true) {
@@ -582,18 +608,7 @@ async function loadCustomerOps(show = true) {
   } catch (e) { if (show) setMessage(`Ошибка Customer Ops: ${e.message}`); }
 }
 async function runCustomerOpsSync(mode = "full") {
-  setLoading(true);
-  setMessage("Запускаю синхронизацию Customer Ops…");
-  try {
-    const res = await api(`/customer-ops/sync/start?platform=${platform}&mode=${mode}`, { method: "POST", timeoutMs: 15000 });
-    setMessage(res?.already_running ? "Customer Ops уже синхронизируется. Обновлю данные через несколько секунд." : "Customer Ops запущен в фоне. Данные обновятся после завершения.");
-    setTimeout(() => loadCustomerOps(false), 6000);
-    setTimeout(() => { loadCustomerOps(false); refreshAll(false); }, 20000);
-  } catch (e) {
-    setMessage(`Ошибка Customer Ops sync: ${e.message}`);
-  } finally {
-    setLoading(false);
-  }
+  return startBackgroundSync("customer_ops", "Синхронизация Customer Ops", mode);
 }
 async function openChat(chat) {
   setSelectedChat(chat); setChatDraft("");

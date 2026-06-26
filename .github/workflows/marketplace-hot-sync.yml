@@ -3,8 +3,6 @@ name: KARATOV Hot Sync
 on:
   workflow_dispatch:
   schedule:
-    # Free near-real-time: every 5 minutes.
-    # Shifted away from exact :00/:05/:10 peak minutes to reduce GitHub scheduler drops.
     - cron: "3-58/5 * * * *"
 
 permissions:
@@ -15,46 +13,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  hot-wb:
-    name: WB hot sync
+  hot-sync:
+    name: KARATOV Hot Sync
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
-      WB_SYNC_MODE: both
-      WB_AUTO_SYNC_ENABLED: "false"
-      GITHUB_SYNC_KIND: hot_wb
-      GITHUB_SYNC_MAX_WB_CYCLES: "1"
-      PYTHONUNBUFFERED: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install backend dependencies
-        working-directory: backend
-        run: pip install -r requirements.txt
-      - name: Run WB hot sync
-        working-directory: backend
-        run: python -m app.github_sync_runner
-
-  hot-ozon:
-    name: Ozon hot sync
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OZON_SYNC_ENABLED: "true"
-      OZON_AUTO_SYNC_ENABLED: "false"
-      GITHUB_SYNC_KIND: hot_ozon
-      # Hot Ozon must be lightweight. History/answered/backfill go to separate jobs.
-      GITHUB_SYNC_OZON_TAKE: "10"
-      GITHUB_SYNC_OZON_HOT_BLOCKS: "reviews_unanswered,questions_unanswered"
-      GITHUB_SYNC_STAGE_DEADLINE_SECONDS: "420"
+      GITHUB_SYNC_KIND: hot
+      GITHUB_CUSTOMER_OPS_MODE: full
+      CUSTOMER_OPS_MAX_CHATS: "80"
+      CUSTOMER_OPS_MAX_MESSAGES_PER_CHAT: "120"
+      CUSTOMER_OPS_MAX_RETURNS: "200"
+      CUSTOMER_OPS_REQUEST_TIMEOUT: "22"
+      OPERATIONS_MAX_ROWS: "500"
+      OPERATIONS_MAX_PAGES: "4"
+      OZON_ACT_LIMIT: "500"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +43,6 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run Ozon hot sync
+      - name: Run sync
         working-directory: backend
         run: python -m app.github_sync_runner
