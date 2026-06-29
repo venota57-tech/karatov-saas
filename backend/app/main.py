@@ -185,7 +185,7 @@ for route in [
     "app.routes.analytics",
     "app.routes.wb_booking",
     "app.routes.ops_history",
-    "app.routes.operations", "app.routes.sync_audit", "app.routes.ops_reporting", "app.routes.customer_ops", "app.routes.sync_control", "app.routes.stable_os", "app.routes.recovery_v5",
+    "app.routes.operations", "app.routes.sync_audit", "app.routes.ops_reporting", "app.routes.customer_ops", "app.routes.sync_control", "app.routes.stable_os", "app.routes.recovery_v5", "app.routes.media_human_v56",
 ]:
     include_router_safe(route)
 
@@ -312,7 +312,7 @@ def serve_frontend():
 def serve_frontend_fallback(full_path: str):
     api_prefixes = (
         "api/", "system/", "sync/", "settings/", "reports", "summary", "reviews", "questions",
-        "autopublish", "wb-booking", "ops/", "operations", "analytics/", "stable-os", "recovery-v5", "sync-control/", "sync-audit",
+        "autopublish", "wb-booking", "ops/", "operations", "analytics/", "stable-os", "recovery-v5", "ops-v56", "sync-control/", "sync-audit",
     )
     if full_path.startswith(api_prefixes):
         return JSONResponse(status_code=404, content={"error": "Not found"})

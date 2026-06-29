@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.services.recovery_v5 import RecoveryV5
+from app.services.media_human_v56 import HumanCommsV56
 from app.database import SessionLocal, get_db
 from app.services.customer_ops_service import CustomerOpsService, _jl
 from app.services.ops_common import loads, extract_media, message_text, get, product_link
@@ -109,7 +110,7 @@ def list_chats(platform: str = "ALL", status: str = "all", needs_response: bool 
 
 @router.get("/chats/{chat_id}/messages")
 def chat_messages(chat_id: int, limit: int = 500, db: Session = Depends(get_db)):
-    return RecoveryV5(db).chat_messages(chat_id, limit)
+    return HumanCommsV56(db).chat_messages_by_internal_id(chat_id=chat_id, limit=limit)
 
 @router.patch("/chats/{chat_id}")
 def update_chat(chat_id: int, payload: WorkUpdate, db: Session = Depends(get_db)):
