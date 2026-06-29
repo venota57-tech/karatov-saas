@@ -177,6 +177,107 @@ def simple_topic(text, rating=None, raw=None):
         pass
     return "Прочее"
 
+
+def fix_text(value):
+    if not isinstance(value, str):
+        return value
+    if not any(marker in value for marker in ["Р", "С", "Ð", "Ñ"]):
+        return value
+    candidates = []
+    for enc in ("cp1251", "latin1"):
+        try:
+            candidates.append(value.encode(enc, errors="ignore").decode("utf-8", errors="ignore"))
+        except Exception:
+            pass
+    for repaired in candidates:
+        if repaired and any(("а" <= ch.lower() <= "я") or ch.lower() == "ё" for ch in repaired):
+            return repaired
+    return value
+
+
+def fix_tree(value):
+    if isinstance(value, str):
+        return fix_text(value)
+    if isinstance(value, list):
+        return [fix_tree(x) for x in value]
+    if isinstance(value, dict):
+        return {k: fix_tree(v) for k, v in value.items()}
+    return value
+
+
+def operation_semantics(platform, typ, raw):
+    raw_text = dumps(raw).lower()
+    label = typ or "operation"
+    meaning = "Операция маркетплейса. Нужна проверка raw-данных, потому что API не передал достаточно признаков."
+    source = "unknown"
+    confidence = "medium"
+    if typ in ("return_request", "return"):
+        label = "Возврат"
+        if platform == "WB" and any(x in raw_text for x in ["goods-return", "goods_return", "analytics"]):
+            meaning = "WB goods-return / аналитика возврата товара: логистическое движение товара обратно к продавцу/складу, часто связано с невыкупом, возвратом после выкупа или возвратной логистикой. Это не обязательно продавец-инициированный возврат."
+            source = "WB goods-return analytics / returns"
+        elif platform == "WB":
+            meaning = "WB заявка/claim на возврат: обращение или возвратная заявка покупателя/маркетплейса. Не считать продавец-инициированным без дополнительного статуса в raw."
+            source = "WB returns/claims"
+        elif platform == "OZON":
+            meaning = "Ozon заявка на возврат покупателя или возвратный кейс, если доступный returns API вернул данные. Не является FBS-отгрузкой."
+            source = "Ozon returns API"
+        confidence = "high"
+    elif typ in ("posting", "shipment", "shipment_issue"):
+        label = "Отгрузка"
+        meaning = "Ozon FBS posting: заказ/отправление FBS из /v3/posting/fbs/list. Это не возврат; это рабочая отгрузка/заказ. В Operations Hub нужна для контроля статусов отгрузки и проблемных состояний."
+        if typ == "shipment_issue":
+            meaning = "Проблемная Ozon FBS отгрузка: posting из /v3/posting/fbs/list со статусом, требующим внимания. Это не возврат, а FBS-заказ/отправление."
+        source = "Ozon /v3/posting/fbs/list"
+        confidence = "high"
+    elif typ == "act":
+        label = "Акт"
+        meaning = "Акт/документ маркетплейса. Для Ozon это FBS act list, для WB — документ из Documents API, классифицированный по названию/категории."
+        source = "Ozon acts / WB Documents"
+        confidence = "high"
+    elif typ == "surplus":
+        label = "Излишек"; meaning = "Документ/операция, классифицированная как излишек по WB Documents API или признакам raw."; source = "WB Documents"
+    elif typ == "shortage":
+        label = "Недостача"; meaning = "Документ/операция, классифицированная как недостача по WB Documents API или признакам raw."; source = "WB Documents"
+    elif typ == "anonymized_item":
+        label = "Обезличка"; meaning = "Документ/операция, классифицированная как обезличенный товар по WB Documents API или признакам raw."; source = "WB Documents"
+    elif typ == "discrepancy":
+        label = "Расхождение"; meaning = "Документ/операция, классифицированная как расхождение по WB Documents API или признакам raw."; source = "WB Documents"
+    return fix_tree({"operation_label": label, "operation_description": meaning, "operation_source": source, "operation_confidence": confidence})
+
+
+def simple_topic(text, rating=None, raw=None):
+    t = ((text or "") + " " + dumps(raw or "")).lower()
+    if not t.strip() or t.strip() in {"без текста", "нет текста"}:
+        return "Без текста"
+    if any(x in t for x in ["размер", "мал", "больш", "не подош", "подош"]):
+        return "Размер / посадка"
+    if any(x in t for x in ["камень", "вставк", "фианит", "бриллиант", "изумруд", "сапфир", "топаз"]):
+        return "Камни / вставки"
+    if any(x in t for x in ["качество", "брак", "слом", "погнул", "царап", "потемн", "золото", "серебро"]):
+        return "Качество изделия"
+    if any(x in t for x in ["достав", "курьер", "срок", "получ", "пункт", "упаков"]):
+        return "Доставка / упаковка"
+    if any(x in t for x in ["возврат", "деньги", "отказ", "не выкуп"]):
+        return "Возврат / отказ"
+    try:
+        if rating is not None and int(rating) >= 4:
+            return "Позитив"
+        if rating is not None and int(rating) <= 3:
+            return "Негатив / претензия"
+    except Exception:
+        pass
+    return "Прочее"
+
+
+def first_product(raw):
+    raw = loads(raw) or raw or {}
+    products = raw.get("products") if isinstance(raw, dict) else None
+    if isinstance(products, list) and products and isinstance(products[0], dict):
+        return products[0]
+    product = get(raw, "product", "productDetails", "goodCard", default={}) if isinstance(raw, dict) else {}
+    return product if isinstance(product, dict) else {}
+
 class RecoveryV5:
     def __init__(self, db: Session):
         self.db=db; self.timeout=httpx.Timeout(float(os.getenv('RECOVERY_REQUEST_TIMEOUT','24')), connect=8)
@@ -453,98 +554,240 @@ class RecoveryV5:
         parts.append(await self.chats(p)); parts.append(await self.operations(p))
         return {'ok':any(not x.get('errors') for x in parts),'platform':p,'deep':deep,'received':sum(int(x.get('received',0) or 0) for x in parts),'parts':parts}
 
+
     def communications(self, platform='ALL', limit=20000, entity_type='ALL', topic=None):
-        self.ensure(); p=platform.upper(); limit=min(max(int(limit),1),50000)
-        where=["(:p='ALL' OR platform=:p)"]; params={'p':p,'l':limit}
-        if entity_type and entity_type.upper()!='ALL':
-            where.append("entity_type=:et"); params['et']=entity_type
-        sql="SELECT * FROM recovery_communications WHERE "+ " AND ".join(where) +" ORDER BY COALESCE(created_at_marketplace,updated_at,created_at) DESC,id DESC LIMIT :l"
-        try: rows=self.db.execute(text(sql),params).mappings().all()
-        except Exception as e: self.db.rollback(); return {'ok':False,'items':[],'error':str(e)}
-        items=[]
-        for r in rows:
-            d=dict(r)
-            raw=loads(d.get('raw')) or {}
-            d['topic']=simple_topic(d.get('text'), d.get('rating'), raw)
-            if topic and d['topic']!=topic: continue
+        self.ensure()
+        p = platform.upper()
+        limit = min(max(int(limit), 1), 50000)
+        items = []
+
+        if "recovery_communications" in self.tables():
+            where = ["(:p='ALL' OR platform=:p)"]
+            params = {"p": p, "l": limit}
+            if entity_type and entity_type.upper() != "ALL":
+                where.append("entity_type=:et")
+                params["et"] = entity_type
+            sql = "SELECT * FROM recovery_communications WHERE " + " AND ".join(where) + " ORDER BY COALESCE(created_at_marketplace,updated_at,created_at) DESC,id DESC LIMIT :l"
             try:
-                mids=self.db.execute(text("SELECT media_type,url,preview_url,filename,source,visibility,send_status FROM communication_media WHERE platform=:p AND entity_type=:et AND entity_id=:eid ORDER BY id DESC LIMIT 50"),{'p':d.get('platform'),'et':d.get('entity_type'),'eid':str(d.get('external_id'))}).mappings().all()
-                d['media']=[dict(m) for m in mids]
+                rows = self.db.execute(text(sql), params).mappings().all()
             except Exception:
-                self.db.rollback(); d['media']=[]
-            for k,v in list(d.items()):
-                if hasattr(v,'isoformat'): d[k]=v.isoformat()
-            items.append(d)
-        return {'ok':True,'platform':p,'count':len(items),'items':items[:limit]}
+                self.db.rollback()
+                rows = []
+            for r in rows:
+                d = fix_tree(dict(r))
+                raw = fix_tree(loads(d.get("raw")) or {})
+                d["raw"] = raw
+                d["topic"] = simple_topic(d.get("text"), d.get("rating"), raw)
+                if topic and d["topic"] != topic:
+                    continue
+                try:
+                    mids = self.db.execute(text("SELECT media_type,url,preview_url,filename,source,visibility,send_status FROM communication_media WHERE platform=:p AND entity_type=:et AND entity_id=:eid ORDER BY id DESC LIMIT 50"), {"p": d.get("platform"), "et": d.get("entity_type"), "eid": str(d.get("external_id"))}).mappings().all()
+                    d["media"] = [fix_tree(dict(m)) for m in mids]
+                except Exception:
+                    self.db.rollback()
+                    d["media"] = extract_media(raw)
+                for k, v in list(d.items()):
+                    if hasattr(v, "isoformat"):
+                        d[k] = v.isoformat()
+                items.append(d)
+
+        if not items:
+            fallback_tables = [("reviews", "review"), ("marketplace_reviews", "review"), ("questions", "question"), ("marketplace_questions", "question")]
+            for table_name, etype in fallback_tables:
+                if table_name not in self.tables():
+                    continue
+                cols = self.cols(table_name)
+                order_cols = [c for c in ["created_at_marketplace", "updated_at", "created_at"] if c in cols]
+                order_expr = "COALESCE(" + ",".join(order_cols) + ")" if len(order_cols) > 1 else (order_cols[0] if order_cols else "id")
+                where = "WHERE (:p='ALL' OR platform=:p)" if "platform" in cols else ""
+                try:
+                    rows = self.db.execute(text(f"SELECT * FROM {table_name} {where} ORDER BY {order_expr} DESC, id DESC LIMIT :l"), {"p": p, "l": limit}).mappings().all()
+                except Exception:
+                    self.db.rollback()
+                    rows = []
+                for r in rows:
+                    d0 = dict(r)
+                    raw = fix_tree(loads(d0.get("raw") or d0.get("raw_payload")) or d0)
+                    external_id = str(d0.get("external_id") or d0.get("external_review_id") or d0.get("external_question_id") or d0.get("id"))
+                    rating = d0.get("rating") or d0.get("product_valuation") or get(raw, "rating", "productValuation", default=None)
+                    txt = d0.get("text") or d0.get("question") or text_value(raw)
+                    item = {
+                        "entity_type": etype,
+                        "platform": str(d0.get("platform") or p).upper(),
+                        "external_id": external_id,
+                        "product_name": fix_text(d0.get("product_name") or get(raw, "productName", "product_name", "subject", "name", default="")),
+                        "sku": str(d0.get("sku") or get(raw, "sku", "nmID", "nmId", "offer_id", default="") or ""),
+                        "rating": rating,
+                        "text": fix_text(txt),
+                        "created_at_marketplace": d0.get("created_at_marketplace") or d0.get("created_at"),
+                        "answer_text": d0.get("answer_text") or d0.get("response_text") or get(raw, "answer", "sellerAnswer", default=None),
+                        "media": extract_media(raw),
+                        "raw": raw,
+                    }
+                    item["topic"] = simple_topic(item["text"], rating, raw)
+                    if topic and item["topic"] != topic:
+                        continue
+                    for k, v in list(item.items()):
+                        if hasattr(v, "isoformat"):
+                            item[k] = v.isoformat()
+                    items.append(item)
+
+        return {"ok": True, "platform": p, "count": len(items), "items": items[:limit]}
 
     def operations_items(self, platform='ALL', limit=10000, operation_type='ALL'):
-        self.ensure(); p=platform.upper(); limit=min(max(int(limit),1),50000)
-        where=["(:p='ALL' OR platform=:p)"]; params={'p':p,'l':limit}
-        if operation_type and operation_type.upper()!='ALL':
-            where.append("operation_type=:ot"); params['ot']=operation_type
-        sql="SELECT * FROM marketplace_operations WHERE "+ " AND ".join(where) +" ORDER BY COALESCE(occurred_at,updated_at,created_at) DESC,id DESC LIMIT :l"
-        try: rows=self.db.execute(text(sql),params).mappings().all()
-        except Exception as e: self.db.rollback(); return {'ok':False,'items':[],'error':str(e)}
-        out=[]
+        self.ensure()
+        p = platform.upper()
+        limit = min(max(int(limit), 1), 50000)
+        where = ["(:p='ALL' OR platform=:p)"]
+        params = {"p": p, "l": limit}
+        if operation_type and operation_type.upper() != "ALL":
+            where.append("operation_type=:ot")
+            params["ot"] = operation_type
+        sql = "SELECT * FROM marketplace_operations WHERE " + " AND ".join(where) + " ORDER BY COALESCE(occurred_at,updated_at,created_at) DESC,id DESC LIMIT :l"
+        try:
+            rows = self.db.execute(text(sql), params).mappings().all()
+        except Exception as e:
+            self.db.rollback()
+            return {"ok": False, "items": [], "error": str(e)}
+        out = []
         for r in rows:
-            d=dict(r); raw=loads(d.get('raw')) or {}
-            d['raw']=raw
-            d.update(operation_semantics(d.get('platform'), d.get('operation_type'), raw))
-            for k,v in list(d.items()):
-                if hasattr(v,'isoformat'): d[k]=v.isoformat()
+            d = fix_tree(dict(r))
+            raw = fix_tree(loads(d.get("raw")) or {})
+            d["raw"] = raw
+            fp = fix_tree(first_product(raw))
+            if isinstance(fp, dict) and fp:
+                d["product_name"] = fix_text(fp.get("name") or fp.get("productName") or fp.get("product_name") or d.get("product_name"))
+                d["sku"] = str(fp.get("sku") or fp.get("product_id") or fp.get("offer_id") or d.get("sku") or "")
+                d["amount"] = str(fp.get("price") or fp.get("amount") or d.get("amount") or "")
+                d["quantity"] = int(fp.get("quantity") or fp.get("qty") or d.get("quantity") or 1)
+            delivery = raw.get("delivery_method") if isinstance(raw, dict) and isinstance(raw.get("delivery_method"), dict) else {}
+            if delivery and not d.get("warehouse"):
+                d["warehouse"] = fix_text(delivery.get("warehouse") or delivery.get("warehouse_name") or "")
+            d.update(operation_semantics(d.get("platform"), d.get("operation_type"), raw))
+            for k, v in list(d.items()):
+                if hasattr(v, "isoformat"):
+                    d[k] = v.isoformat()
             out.append(d)
-        return {'ok':True,'platform':p,'count':len(out),'items':out}
+        return {"ok": True, "platform": p, "count": len(out), "items": out}
 
     def topics(self, platform='ALL'):
-        data=self.communications(platform=platform, limit=50000)
-        if not data.get('ok'): return data
-        out={}
-        for item in data.get('items',[]):
-            key=item.get('topic') or 'Прочее'
-            o=out.setdefault(key, {'topic':key,'total':0,'reviews':0,'questions':0,'chats':0,'returns':0,'with_media':0})
-            o['total']+=1
-            et=item.get('entity_type')
-            if et=='review': o['reviews']+=1
-            elif et=='question': o['questions']+=1
-            elif et=='chat': o['chats']+=1
-            elif et=='return_request': o['returns']+=1
-            if item.get('media'): o['with_media']+=1
-        return {'ok':True,'platform':platform.upper(),'items':sorted(out.values(), key=lambda x:x['total'], reverse=True)}
+        data = self.communications(platform=platform, limit=50000)
+        if not data.get("ok"):
+            return data
+        out = {}
+        for item in data.get("items", []):
+            key = item.get("topic") or "Прочее"
+            o = out.setdefault(key, {"topic": key, "total": 0, "reviews": 0, "questions": 0, "chats": 0, "returns": 0, "with_media": 0})
+            o["total"] += 1
+            et = item.get("entity_type")
+            if et == "review":
+                o["reviews"] += 1
+            elif et == "question":
+                o["questions"] += 1
+            elif et == "chat":
+                o["chats"] += 1
+            elif et == "return_request":
+                o["returns"] += 1
+            if item.get("media"):
+                o["with_media"] += 1
+        return {"ok": True, "platform": platform.upper(), "items": sorted(out.values(), key=lambda x: x["total"], reverse=True)}
 
     def scheduler(self):
         from pathlib import Path
-        root=Path.cwd().parent if Path.cwd().name=='backend' else Path.cwd()
-        wf=root/'.github'/'workflows'
-        files=sorted(wf.glob('*.yml')) if wf.exists() else []
-        workflows=[]
+        root = Path.cwd().parent if Path.cwd().name == "backend" else Path.cwd()
+        wf = root / ".github" / "workflows"
+        files = sorted(wf.glob("*.yml")) if wf.exists() else []
+        workflows = []
         for f in files:
-            txt=f.read_text(encoding='utf-8',errors='ignore')
-            workflows.append({'file':f.name,'has_schedule':'schedule:' in txt,'has_workflow_dispatch':'workflow_dispatch:' in txt,'cron':[line.strip() for line in txt.splitlines() if 'cron:' in line][:5],'uses_recovery_v5':'app.recovery_v5_entry' in txt})
-        hb=[]
+            txt = f.read_text(encoding="utf-8", errors="ignore")
+            workflows.append({"file": f.name, "has_schedule": "schedule:" in txt, "has_workflow_dispatch": "workflow_dispatch:" in txt, "cron": [line.strip() for line in txt.splitlines() if "cron:" in line][:5], "uses_recovery_v5": "app.recovery_v5_entry" in txt})
+        expected = [
+            {"file": "marketplace-hot-sync.yml", "expected_schedule": True, "expected_kind": "reviews_questions"},
+            {"file": "marketplace-customer-ops-sync.yml", "expected_schedule": True, "expected_kind": "customer_ops"},
+            {"file": "marketplace-operations-sync.yml", "expected_schedule": True, "expected_kind": "operations"},
+            {"file": "marketplace-nightly-deep-sync.yml", "expected_schedule": True, "expected_kind": "all/deep"},
+            {"file": "marketplace-scheduler-heartbeat.yml", "expected_schedule": True, "expected_kind": "scheduler_heartbeat"},
+        ]
+        if not workflows:
+            workflows = [{**x, "runtime_file_visible": False, "note": "Render runtime usually does not contain .github/workflows; use heartbeat and GitHub Actions UI as source of truth."} for x in expected]
+        hb = []
         try:
-            hb=[dict(r) for r in self.db.execute(text("SELECT platform,block,status,error,created_at FROM marketplace_raw_events WHERE block='scheduler_heartbeat' ORDER BY created_at DESC LIMIT 20")).mappings().all()]
+            hb = [dict(r) for r in self.db.execute(text("SELECT platform,block,status,error,created_at FROM marketplace_raw_events WHERE block='scheduler_heartbeat' ORDER BY created_at DESC LIMIT 20")).mappings().all()]
             for r in hb:
-                for k,v in list(r.items()):
-                    if hasattr(v,'isoformat'): r[k]=v.isoformat()
+                for k, v in list(r.items()):
+                    if hasattr(v, "isoformat"):
+                        r[k] = v.isoformat()
         except Exception as e:
-            self.db.rollback(); hb=[{'error':str(e)}]
-        return {'ok':True,'workflows':workflows,'heartbeats':hb}
+            self.db.rollback()
+            hb = [{"error": str(e)}]
+        return {"ok": True, "workflow_dir": str(wf), "workflows": workflows, "heartbeats": hb, "heartbeat_count": len(hb)}
 
+    def counts(self):
+        self.ensure()
+        out = {}
+        for table_name in [
+            "reviews", "questions", "marketplace_reviews", "marketplace_questions",
+            "recovery_communications", "response_sla_metrics", "communication_media",
+            "buyer_chats", "buyer_chat_messages", "buyer_returns", "marketplace_operations", "marketplace_raw_events"
+        ]:
+            if table_name not in self.tables():
+                continue
+            try:
+                out[table_name] = self.db.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+            except Exception as e:
+                self.db.rollback()
+                out[table_name] = f"error: {e}"
+        return {"ok": True, "tables": out}
     def diagnostics(self, platform='ALL', limit=200):
         self.ensure(); p=platform.upper()
         try: rows=self.db.execute(text('SELECT platform,block,status,error,created_at FROM marketplace_raw_events WHERE (:p=\'ALL\' OR platform=:p) ORDER BY created_at DESC LIMIT :l'),{'p':p,'l':min(max(int(limit),1),500)}).mappings().all(); return {'ok':True,'items':[dict(r) for r in rows]}
         except Exception as e: self.db.rollback(); return {'ok':False,'error':str(e),'items':[]}
+
     def sla(self, platform='ALL', days=30):
-        self.ensure(); p=platform.upper(); since=now()-timedelta(days=max(1,min(int(days),365)))
-        try: rows=self.db.execute(text('SELECT entity_type,platform,response_minutes,sla_status FROM response_sla_metrics WHERE (:p=\'ALL\' OR platform=:p) AND COALESCE(created_at_marketplace,created_at)>=:since'),{'p':p,'since':since}).mappings().all()
-        except Exception as e: self.db.rollback(); return {'ok':False,'error':str(e)}
-        out={}
+        self.ensure()
+        p = platform.upper()
+        since = now() - timedelta(days=max(1, min(int(days), 365)))
+        try:
+            rows = self.db.execute(text("SELECT entity_type,platform,response_minutes,sla_status FROM response_sla_metrics WHERE (:p='ALL' OR platform=:p) AND COALESCE(created_at_marketplace,created_at)>=:since"), {"p": p, "since": since}).mappings().all()
+        except Exception:
+            self.db.rollback()
+            rows = []
+
+        if not rows:
+            comms = self.communications(platform=p, limit=50000).get("items", [])
+            generated = []
+            for item in comms:
+                created = pdt(item.get("created_at_marketplace") or item.get("created_at"))
+                raw = item.get("raw") or {}
+                ans_text, ans_dt, _ans_raw = answer_data(raw if isinstance(raw, dict) else {})
+                if not ans_dt:
+                    ans_dt = pdt(item.get("answered_at_marketplace"))
+                minutes = None
+                status = "unanswered"
+                if created and ans_dt:
+                    minutes = max(0, int((ans_dt - created).total_seconds() // 60))
+                    status = "in_sla" if minutes <= 60 else "late"
+                elif not created:
+                    status = "unknown_time"
+                generated.append({"entity_type": item.get("entity_type"), "platform": item.get("platform"), "response_minutes": minutes, "sla_status": status})
+            rows = generated
+
+        out = {}
         for r in rows:
-            k=f"{r['platform']}:{r['entity_type']}"; o=out.setdefault(k,{'total':0,'answered':0,'unanswered':0,'late':0,'avg_minutes':0,'sum':0}); o['total']+=1
-            if r['response_minutes'] is None: o['unanswered']+=1
-            else: o['answered']+=1; o['sum']+=int(r['response_minutes']); o['late']+=1 if r['sla_status']=='late' else 0
-        for o in out.values(): o['avg_minutes']=round(o['sum']/o['answered'],2) if o['answered'] else 0; o.pop('sum',None)
-        return {'ok':True,'by_type':out}
+            k = f"{r['platform']}:{r['entity_type']}"
+            o = out.setdefault(k, {"total": 0, "answered": 0, "unanswered": 0, "late": 0, "avg_minutes": 0, "sum": 0})
+            o["total"] += 1
+            if r["response_minutes"] is None:
+                o["unanswered"] += 1
+            else:
+                o["answered"] += 1
+                o["sum"] += int(r["response_minutes"])
+                if r["sla_status"] == "late":
+                    o["late"] += 1
+        for o in out.values():
+            o["avg_minutes"] = round(o["sum"] / o["answered"], 2) if o["answered"] else 0
+            o.pop("sum", None)
+        return {"ok": True, "by_type": out}
     def chat_messages(self, chat_id:int, limit=500):
         self.ensure()
         try:

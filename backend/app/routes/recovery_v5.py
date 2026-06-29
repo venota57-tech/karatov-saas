@@ -53,4 +53,6 @@ def topic_items(topic:str, platform:str='ALL', limit:int=20000, db:Session=Depen
 @router.get('/scheduler')
 def scheduler(db:Session=Depends(get_db)):
     return RecoveryV5(db).scheduler()
-
+@router.get('/counts')
+def counts(db:Session=Depends(get_db)):
+    return RecoveryV5(db).counts()
