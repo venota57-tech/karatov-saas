@@ -278,6 +278,14 @@ def first_product(raw):
     product = get(raw, "product", "productDetails", "goodCard", default={}) if isinstance(raw, dict) else {}
     return product if isinstance(product, dict) else {}
 
+
+def _env_secret(*names):
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return ''
+
 class RecoveryV5:
     def __init__(self, db: Session):
         self.db=db; self.timeout=httpx.Timeout(float(os.getenv('RECOVERY_REQUEST_TIMEOUT','24')), connect=8)
@@ -383,7 +391,7 @@ class RecoveryV5:
         except Exception as e: self.db.rollback(); self.raw(platform,f'{kind}_upsert','failed',raw,str(e),ext)
         self.up_media(kind,ext,platform,md); self.sync_sla(kind,platform,ext,block,created,a_dt,raw); self.mirror_existing(kind,platform,ext,raw,norm)
     async def wb_reviews_questions(self, deep=False):
-        token=getattr(settings,'wb_api_token','') or getattr(settings,'wb_api_key',''); res={'platform':'WB','block':'reviews_questions','received':0,'errors':[]}
+        token=(getattr(settings,'wb_api_token','') or getattr(settings,'wb_api_key','') or os.getenv('WB_API_TOKEN') or os.getenv('WB_API_KEY') or ''); res={'platform':'WB','block':'reviews_questions','received':0,'errors':[]}
         if not token: self.raw('WB','reviews_questions','failed',{},'WB token missing'); res['errors'].append('WB token missing'); return res
         h={'Authorization':token}; pages=self.deep_pages if deep else self.hot_pages
         for answered in [False,True]:
@@ -411,7 +419,7 @@ class RecoveryV5:
                 await asyncio.sleep(self.sleep)
         return res
     async def ozon_reviews_questions(self, deep=False):
-        cid=getattr(settings,'ozon_client_id',''); key=getattr(settings,'ozon_api_key',''); res={'platform':'OZON','block':'reviews_questions','received':0,'errors':[]}
+        cid=(getattr(settings,'ozon_client_id','') or os.getenv('OZON_CLIENT_ID') or ''); key=(getattr(settings,'ozon_api_key','') or os.getenv('OZON_API_KEY') or ''); res={'platform':'OZON','block':'reviews_questions','received':0,'errors':[]}
         if not cid or not key: self.raw('OZON','reviews_questions','failed',{},'Ozon credentials missing'); res['errors'].append('Ozon credentials missing'); return res
         h={'Client-Id':cid,'Api-Key':key,'Content-Type':'application/json'}; pages=self.deep_pages if deep else self.hot_pages; last=None; info_limit=int(os.getenv('RECOVERY_OZON_REVIEW_INFO_LIMIT', '80' if not deep else '180')); info_used=0
         for _ in range(pages):
@@ -458,7 +466,7 @@ class RecoveryV5:
     async def chats(self, platform='ALL'):
         platform=platform.upper(); res={'platform':platform,'block':'chats','received':0,'errors':[]}
         if platform in ('ALL','OZON'):
-            cid=getattr(settings,'ozon_client_id',''); key=getattr(settings,'ozon_api_key','')
+            cid=(getattr(settings,'ozon_client_id','') or os.getenv('OZON_CLIENT_ID') or ''); key=(getattr(settings,'ozon_api_key','') or os.getenv('OZON_API_KEY') or '')
             if cid and key:
                 h={'Client-Id':cid,'Api-Key':key,'Content-Type':'application/json'}; ok,d,e=await self.req('OZON','chats_list','POST','https://api-seller.ozon.ru/v3/chat/list',h,body={'filter':{},'limit':min(self.chat_limit,100),'offset':0})
                 if ok:
@@ -472,7 +480,7 @@ class RecoveryV5:
                         await asyncio.sleep(0.1)
                 else: res['errors'].append(e)
         if platform in ('ALL','WB'):
-            token=getattr(settings,'wb_api_token','') or getattr(settings,'wb_api_key','')
+            token=(getattr(settings,'wb_api_token','') or getattr(settings,'wb_api_key','') or os.getenv('WB_API_TOKEN') or os.getenv('WB_API_KEY') or '')
             if token:
                 h={'Authorization':token}; ok,d,e=await self.req('WB','chats_list','GET','https://buyer-chat-api.wildberries.ru/api/v1/seller/chats',h,params={'limit':min(self.chat_limit,100)})
                 if ok:
@@ -506,7 +514,7 @@ class RecoveryV5:
     async def operations(self, platform='ALL'):
         platform=platform.upper(); res={'platform':platform,'block':'operations','received':0,'errors':[]}
         if platform in ('ALL','OZON'):
-            cid=getattr(settings,'ozon_client_id',''); key=getattr(settings,'ozon_api_key','')
+            cid=(getattr(settings,'ozon_client_id','') or os.getenv('OZON_CLIENT_ID') or ''); key=(getattr(settings,'ozon_api_key','') or os.getenv('OZON_API_KEY') or '')
             if cid and key:
                 h={'Client-Id':cid,'Api-Key':key,'Content-Type':'application/json'}; d2=now().date(); d1=d2-timedelta(days=31); cur=d1
                 while cur<d2:
@@ -525,7 +533,7 @@ class RecoveryV5:
                         for it in arr(d,['returns']): self.up_return('OZON',it); res['received']+=1
                     elif e and 'obsolete method' not in str(e).lower(): res['errors'].append(e)
         if platform in ('ALL','WB'):
-            token=getattr(settings,'wb_api_token','') or getattr(settings,'wb_api_key','')
+            token=(getattr(settings,'wb_api_token','') or getattr(settings,'wb_api_key','') or os.getenv('WB_API_TOKEN') or os.getenv('WB_API_KEY') or '')
             if token:
                 h={'Authorization':token}; d2=now().date(); d1=d2-timedelta(days=31)
                 for archive in [False,True]:
