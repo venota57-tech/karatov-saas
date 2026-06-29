@@ -1,22 +1,27 @@
-name: KARATOV Operations Sync
+name: KARATOV Recovery v5 Manual Full
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "22 * * * *"
+    inputs:
+      platform: { description: "ALL, WB, or OZON", required: true, default: "ALL" }
+      deep: { description: "true for deeper backfill", required: true, default: "true" }
 permissions: { contents: read }
-concurrency: { group: karatov-operations-sync, cancel-in-progress: false }
+concurrency: { group: karatov-recovery-v5-manual, cancel-in-progress: false }
 jobs:
-  operations:
+  recovery-v5:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_KIND: operations
-      RECOVERY_V5_PLATFORM: ALL
+      RECOVERY_V5_KIND: all
+      RECOVERY_V5_PLATFORM: ${{ github.event.inputs.platform }}
+      RECOVERY_V5_DEEP: ${{ github.event.inputs.deep }}
+      RECOVERY_DEEP_PAGES: "12"
+      RECOVERY_TAKE: "300"
+      RECOVERY_CHAT_LIMIT: "300"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

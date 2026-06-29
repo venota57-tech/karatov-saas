@@ -58,6 +58,9 @@ const DEFAULT_ROLE_RIGHTS = {
   "Администратор": Object.fromEntries(ACCESS_MODULES.map(([id]) => [id, { view: true, edit: true, publish: true, admin: true }]))
 };
 
+function openRecoveryTopic(topic) {
+  window.open(`/recovery-v5/topics/${encodeURIComponent(topic)}/items?platform=${platform || "ALL"}&limit=20000`, "_blank");
+}
 async function api(path, options = {}) {
   const { timeoutMs = 30000, ...fetchOptions } = options || {};
   const controller = new AbortController();
@@ -420,14 +423,14 @@ function App() {
     if (show) { setLoading(true); setMessage("Обновляю данные из базы…"); }
     try {
       const [r, q, d, s, p, rulesData, b, opsData, opsSummaryData] = await Promise.allSettled([
-        api(`/reviews?platform=${requestedPlatform}&limit=1000`).catch(() => null),
-        api(`/questions?platform=${requestedPlatform}&limit=1000`).catch(() => null),
+        api(`/reviews?platform=${requestedPlatform}&limit=2000000`).catch(() => null),
+        api(`/questions?platform=${requestedPlatform}&limit=2000000`).catch(() => null),
         api(`/system/dashboard?platform=${encodeURIComponent(requestedPlatform)}`, { timeoutMs: 8000 }).catch(() => ({ ok: false, platform: requestedPlatform, counts: null, source: "frontend_dashboard_timeout" })),
         api("/ops/sync-history", { timeoutMs: 4000 }).catch(() => null),
         api("/ops/publish-history", { timeoutMs: 4000 }).catch(() => null),
         api("/settings/automation-rules", { timeoutMs: 4000 }).catch(() => ({})),
         api("/wb-booking/status", { timeoutMs: 4000 }).catch(() => null),
-        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=100`, { timeoutMs: 7000 }).catch(() => null),
+        api(`/operations?platform=${requestedPlatform}&operation_type=${requestedOperationType}&limit=10000`, { timeoutMs: 7000 }).catch(() => null),
         api(`/operations/summary?platform=${requestedPlatform}`, { timeoutMs: 7000 }).catch(() => null),
       ]);
       if (requestId !== refreshRequestSeq.current || requestedPlatform !== (platformRef.current || "ALL")) return;
@@ -596,8 +599,8 @@ async function loadCustomerOps(show = true) {
   try {
     const [summaryRes, chatsRes, returnsRes, slaRes] = await Promise.allSettled([
       api(`/customer-ops/summary?platform=${requestedPlatform}`, { timeoutMs: 10000 }).catch(() => null),
-      api(`/customer-ops/chats?platform=${requestedPlatform}&limit=100`, { timeoutMs: 10000 }).catch(() => null),
-      api(`/customer-ops/returns?platform=${requestedPlatform}&limit=100`, { timeoutMs: 10000 }).catch(() => null),
+      api(`/customer-ops/chats?platform=${requestedPlatform}&limit=10000`, { timeoutMs: 10000 }).catch(() => null),
+      api(`/customer-ops/returns?platform=${requestedPlatform}&limit=10000`, { timeoutMs: 10000 }).catch(() => null),
       api(`/reports/chat-sla?platform=${requestedPlatform}&days=30`, { timeoutMs: 10000 }).catch(() => null),
     ]);
     if (summaryRes.status === "fulfilled" && summaryRes.value) setCustomerOpsSummary(prev => summaryRes.value || prev);
@@ -612,7 +615,7 @@ async function runCustomerOpsSync(mode = "full") {
 }
 async function openChat(chat) {
   setSelectedChat(chat); setChatDraft("");
-  try { const data = await api(`/customer-ops/chats/${chat.id}/messages?limit=500`, { timeoutMs: 60000 }); setSelectedChat(data.chat || chat); setChatMessages(data.items || []); }
+  try { const data = await api(`/customer-ops/chats/${chat.id}/messages?limit=1000000`, { timeoutMs: 60000 }); setSelectedChat(data.chat || chat); setChatMessages(data.items || []); }
   catch (e) { setMessage(`Ошибка истории чата: ${e.message}`); }
 }
 async function patchChat(id, payload) {

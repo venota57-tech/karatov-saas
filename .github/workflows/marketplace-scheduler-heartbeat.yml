@@ -1,21 +1,28 @@
-name: KARATOV Operations Sync
+name: KARATOV Scheduler Heartbeat
+
 on:
   workflow_dispatch:
   schedule:
-    - cron: "22 * * * *"
-permissions: { contents: read }
-concurrency: { group: karatov-operations-sync, cancel-in-progress: false }
+    - cron: "9-59/10 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karatov-scheduler-heartbeat
+  cancel-in-progress: false
+
 jobs:
-  operations:
+  heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 6
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_KIND: operations
+      RECOVERY_V5_KIND: scheduler_heartbeat
       RECOVERY_V5_PLATFORM: ALL
       PYTHONUNBUFFERED: "1"
     steps:
