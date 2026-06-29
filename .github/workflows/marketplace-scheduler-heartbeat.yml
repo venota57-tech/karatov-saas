@@ -22,14 +22,16 @@ jobs:
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_KIND: scheduler_heartbeat
+      RECOVERY_V5_STAGE: scheduler_heartbeat
       RECOVERY_V5_PLATFORM: ALL
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - working-directory: backend
+      - name: Install backend dependencies
+        working-directory: backend
         run: pip install -r requirements.txt
-      - working-directory: backend
-        run: python -m app.recovery_v5_entry
+      - name: Write scheduler heartbeat
+        working-directory: backend
+        run: python -m app.recovery_v5_stage_entry

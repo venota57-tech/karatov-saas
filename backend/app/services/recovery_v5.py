@@ -413,7 +413,7 @@ class RecoveryV5:
     async def ozon_reviews_questions(self, deep=False):
         cid=getattr(settings,'ozon_client_id',''); key=getattr(settings,'ozon_api_key',''); res={'platform':'OZON','block':'reviews_questions','received':0,'errors':[]}
         if not cid or not key: self.raw('OZON','reviews_questions','failed',{},'Ozon credentials missing'); res['errors'].append('Ozon credentials missing'); return res
-        h={'Client-Id':cid,'Api-Key':key,'Content-Type':'application/json'}; pages=self.deep_pages if deep else self.hot_pages; last=None
+        h={'Client-Id':cid,'Api-Key':key,'Content-Type':'application/json'}; pages=self.deep_pages if deep else self.hot_pages; last=None; info_limit=int(os.getenv('RECOVERY_OZON_REVIEW_INFO_LIMIT', '80' if not deep else '180')); info_used=0
         for _ in range(pages):
             body={'limit':min(self.take,100),'sort_dir':'DESC'}
             if last: body['last_id']=last
@@ -423,9 +423,11 @@ class RecoveryV5:
             if not rows: break
             for it in rows:
                 rid=str(get(it,'id','review_id','reviewId',default='') or sid(it)); full=it
-                oi,info,ie=await self.req('OZON','review_info','POST','https://api-seller.ozon.ru/v1/review/info',h,body={'review_id':rid},log_ok=False)
-                if oi and isinstance(info,dict): full={**it, **(info.get('result') if isinstance(info.get('result'),dict) else info)}
-                self.up_comm('review','OZON',rid,'review_list',full); await asyncio.sleep(0.12)
+                if info_used < info_limit:
+                    oi,info,ie=await self.req('OZON','review_info','POST','https://api-seller.ozon.ru/v1/review/info',h,body={'review_id':rid},log_ok=False)
+                    info_used += 1
+                    if oi and isinstance(info,dict): full={**it, **(info.get('result') if isinstance(info.get('result'),dict) else info)}
+                self.up_comm('review','OZON',rid,'review_list',full); await asyncio.sleep(0.06)
             last=get(d,'last_id','lastId',default=None)
             if not last: break
             await asyncio.sleep(self.sleep)

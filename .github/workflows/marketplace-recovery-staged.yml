@@ -1,0 +1,85 @@
+name: KARATOV Recovery v5 Staged
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "wb_reviews_questions, ozon_reviews, chats, operations, reviews_questions, all_safe"
+        required: true
+        default: "wb_reviews_questions"
+        type: choice
+        options:
+          - wb_reviews_questions
+          - ozon_reviews
+          - chats
+          - operations
+          - reviews_questions
+          - all_safe
+      platform:
+        description: "ALL, WB, or OZON"
+        required: true
+        default: "ALL"
+        type: choice
+        options:
+          - ALL
+          - WB
+          - OZON
+      deep:
+        description: "true for deeper backfill"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      pages:
+        description: "Pages budget"
+        required: true
+        default: "6"
+      take:
+        description: "Rows per page budget"
+        required: true
+        default: "200"
+      ozon_info_limit:
+        description: "Max Ozon review_info calls in this run"
+        required: true
+        default: "120"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karatov-recovery-v5-staged-${{ github.event.inputs.stage }}-${{ github.event.inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  staged:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WB_API_KEY: ${{ secrets.WB_API_KEY }}
+      WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
+      OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
+      OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
+      RECOVERY_V5_STAGE: ${{ github.event.inputs.stage }}
+      RECOVERY_V5_PLATFORM: ${{ github.event.inputs.platform }}
+      RECOVERY_V5_DEEP: ${{ github.event.inputs.deep }}
+      RECOVERY_DEEP_PAGES: ${{ github.event.inputs.pages }}
+      RECOVERY_HOT_PAGES: ${{ github.event.inputs.pages }}
+      RECOVERY_TAKE: ${{ github.event.inputs.take }}
+      RECOVERY_OZON_REVIEW_INFO_LIMIT: ${{ github.event.inputs.ozon_info_limit }}
+      RECOVERY_STAGE_TIMEOUT_SECONDS: "1320"
+      RECOVERY_CHAT_LIMIT: "300"
+      RECOVERY_REQUEST_TIMEOUT: "24"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Run selected staged recovery
+        working-directory: backend
+        run: python -m app.recovery_v5_stage_entry

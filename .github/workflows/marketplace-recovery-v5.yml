@@ -1,33 +1,51 @@
 name: KARATOV Recovery v5 Manual Full
+
 on:
   workflow_dispatch:
     inputs:
-      platform: { description: "ALL, WB, or OZON", required: true, default: "ALL" }
-      deep: { description: "true for deeper backfill", required: true, default: "true" }
-permissions: { contents: read }
-concurrency: { group: karatov-recovery-v5-manual, cancel-in-progress: false }
+      platform:
+        description: "ALL, WB, or OZON"
+        required: true
+        default: "ALL"
+      deep:
+        description: "true for deeper backfill"
+        required: true
+        default: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karatov-recovery-v5-manual-full-safe
+  cancel-in-progress: false
+
 jobs:
-  recovery-v5:
+  safe-full:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 24
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_KIND: all
+      RECOVERY_V5_STAGE: all_safe
       RECOVERY_V5_PLATFORM: ${{ github.event.inputs.platform }}
       RECOVERY_V5_DEEP: ${{ github.event.inputs.deep }}
-      RECOVERY_DEEP_PAGES: "12"
-      RECOVERY_TAKE: "300"
-      RECOVERY_CHAT_LIMIT: "300"
+      RECOVERY_DEEP_PAGES: "6"
+      RECOVERY_TAKE: "200"
+      RECOVERY_OZON_REVIEW_INFO_LIMIT: "120"
+      RECOVERY_STAGE_TIMEOUT_SECONDS: "900"
+      RECOVERY_CHAT_LIMIT: "250"
+      RECOVERY_REQUEST_TIMEOUT: "24"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - working-directory: backend
+      - name: Install backend dependencies
+        working-directory: backend
         run: pip install -r requirements.txt
-      - working-directory: backend
-        run: python -m app.recovery_v5_entry
+      - name: Run safe staged full recovery
+        working-directory: backend
+        run: python -m app.recovery_v5_stage_entry

@@ -1,19 +1,19 @@
-name: KARATOV Customer Ops Sync
+name: KARATOV Hot Sync Ozon
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "8-58/15 * * * *"
+    - cron: "6-56/10 * * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: karatov-customer-ops-sync
+  group: karatov-hot-sync-ozon
   cancel-in-progress: false
 
 jobs:
-  customer-ops:
+  ozon-hot:
     runs-on: ubuntu-latest
     timeout-minutes: 14
     env:
@@ -22,9 +22,12 @@ jobs:
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_STAGE: chats
-      RECOVERY_V5_PLATFORM: ALL
-      RECOVERY_CHAT_LIMIT: "250"
+      RECOVERY_V5_STAGE: ozon_reviews
+      RECOVERY_V5_PLATFORM: OZON
+      RECOVERY_V5_DEEP: "false"
+      RECOVERY_HOT_PAGES: "2"
+      RECOVERY_TAKE: "150"
+      RECOVERY_OZON_REVIEW_INFO_LIMIT: "50"
       RECOVERY_STAGE_TIMEOUT_SECONDS: "780"
       RECOVERY_REQUEST_TIMEOUT: "24"
       PYTHONUNBUFFERED: "1"
@@ -35,6 +38,6 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: pip install -r requirements.txt
-      - name: Run staged Customer Ops
+      - name: Run Ozon staged hot sync
         working-directory: backend
         run: python -m app.recovery_v5_stage_entry

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db
 from app.services.recovery_v5 import RecoveryV5
+from app.services.recovery_v5_stages import run_stage
 router=APIRouter(prefix='/recovery-v5', tags=['recovery-v5'])
 STATE={'running':False,'last_error':None,'last_result':None}; TASK=None
 def iso(): return datetime.now(timezone.utc).isoformat()
@@ -56,3 +57,38 @@ def scheduler(db:Session=Depends(get_db)):
 @router.get('/counts')
 def counts(db:Session=Depends(get_db)):
     return RecoveryV5(db).counts()
+
+
+STAGE_STATE={'running':False,'last_error':None,'last_result':None,'last_started_at':None,'last_finished_at':None}
+STAGE_TASK=None
+
+async def bg_stage(stage, platform, deep, rid):
+    db=SessionLocal()
+    try:
+        res=await run_stage(RecoveryV5(db), stage=stage, platform=platform, deep=deep)
+        STAGE_STATE.update({'running':False,'run_id':rid,'stage':stage,'platform':platform,'deep':deep,'last_error':None,'last_result':res,'last_finished_at':iso()})
+    except Exception as e:
+        try: db.rollback()
+        except Exception: pass
+        STAGE_STATE.update({'running':False,'run_id':rid,'stage':stage,'platform':platform,'deep':deep,'last_error':str(e),'last_finished_at':iso()})
+    finally:
+        db.close()
+
+@router.get('/stage/status')
+def stage_status():
+    return {'ok':True,'state':STAGE_STATE}
+
+@router.post('/stage/start')
+async def stage_start(stage:str='all_safe', platform:str='ALL', deep:bool=False):
+    global STAGE_TASK
+    if STAGE_TASK is not None and not STAGE_TASK.done():
+        return {'ok':True,'started':False,'already_running':True,'state':STAGE_STATE}
+    rid=str(uuid4())
+    STAGE_STATE.update({'running':True,'run_id':rid,'stage':stage,'platform':platform.upper(),'deep':deep,'last_started_at':iso(),'last_finished_at':None,'last_error':None,'last_result':None})
+    STAGE_TASK=asyncio.create_task(bg_stage(stage,platform.upper(),deep,rid))
+    return {'ok':True,'started':True,'run_id':rid,'stage':stage,'platform':platform.upper(),'deep':deep}
+
+@router.post('/stage/run-now')
+async def stage_run_now(stage:str='all_safe', platform:str='ALL', deep:bool=False, db:Session=Depends(get_db)):
+    return await run_stage(RecoveryV5(db), stage=stage, platform=platform.upper(), deep=deep)
+

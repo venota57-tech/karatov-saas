@@ -1,32 +1,68 @@
 name: KARATOV Nightly Deep Sync
+
 on:
   workflow_dispatch:
   schedule:
     - cron: "37 23 * * *"
-permissions: { contents: read }
-concurrency: { group: karatov-nightly-deep-sync, cancel-in-progress: false }
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karatov-nightly-deep-sync
+  cancel-in-progress: false
+
 jobs:
-  nightly:
+  nightly-stage:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 24
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: wb_reviews_questions
+            platform: WB
+            pages: "10"
+            take: "300"
+            info_limit: "0"
+          - stage: ozon_reviews
+            platform: OZON
+            pages: "8"
+            take: "200"
+            info_limit: "180"
+          - stage: chats
+            platform: ALL
+            pages: "3"
+            take: "200"
+            info_limit: "0"
+          - stage: operations
+            platform: ALL
+            pages: "3"
+            take: "200"
+            info_limit: "0"
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       WB_API_KEY: ${{ secrets.WB_API_KEY }}
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_KIND: all
-      RECOVERY_V5_PLATFORM: ALL
+      RECOVERY_V5_STAGE: ${{ matrix.stage }}
+      RECOVERY_V5_PLATFORM: ${{ matrix.platform }}
       RECOVERY_V5_DEEP: "true"
-      RECOVERY_DEEP_PAGES: "12"
-      RECOVERY_TAKE: "300"
+      RECOVERY_DEEP_PAGES: ${{ matrix.pages }}
+      RECOVERY_TAKE: ${{ matrix.take }}
+      RECOVERY_OZON_REVIEW_INFO_LIMIT: ${{ matrix.info_limit }}
+      RECOVERY_STAGE_TIMEOUT_SECONDS: "1320"
       RECOVERY_CHAT_LIMIT: "300"
+      RECOVERY_REQUEST_TIMEOUT: "24"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - working-directory: backend
+      - name: Install backend dependencies
+        working-directory: backend
         run: pip install -r requirements.txt
-      - working-directory: backend
-        run: python -m app.recovery_v5_entry
+      - name: Run staged nightly sync
+        working-directory: backend
+        run: python -m app.recovery_v5_stage_entry

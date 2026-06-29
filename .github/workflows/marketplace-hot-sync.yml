@@ -1,12 +1,19 @@
-name: KARATOV Hot Sync
+name: KARATOV Hot Sync WB
+
 on:
   workflow_dispatch:
   schedule:
     - cron: "3-58/10 * * * *"
-permissions: { contents: read }
-concurrency: { group: karatov-hot-sync, cancel-in-progress: false }
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karatov-hot-sync-wb
+  cancel-in-progress: false
+
 jobs:
-  hot-sync:
+  wb-hot:
     runs-on: ubuntu-latest
     timeout-minutes: 14
     env:
@@ -15,16 +22,21 @@ jobs:
       WB_API_TOKEN: ${{ secrets.WB_API_TOKEN }}
       OZON_CLIENT_ID: ${{ secrets.OZON_CLIENT_ID }}
       OZON_API_KEY: ${{ secrets.OZON_API_KEY }}
-      RECOVERY_V5_KIND: reviews_questions
-      RECOVERY_V5_PLATFORM: ALL
+      RECOVERY_V5_STAGE: wb_reviews_questions
+      RECOVERY_V5_PLATFORM: WB
+      RECOVERY_V5_DEEP: "false"
       RECOVERY_HOT_PAGES: "3"
       RECOVERY_TAKE: "200"
+      RECOVERY_STAGE_TIMEOUT_SECONDS: "780"
+      RECOVERY_REQUEST_TIMEOUT: "24"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - working-directory: backend
+      - name: Install backend dependencies
+        working-directory: backend
         run: pip install -r requirements.txt
-      - working-directory: backend
-        run: python -m app.recovery_v5_entry
+      - name: Run WB staged hot sync
+        working-directory: backend
+        run: python -m app.recovery_v5_stage_entry
