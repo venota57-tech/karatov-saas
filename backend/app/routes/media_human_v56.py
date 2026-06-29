@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.media_human_v56 import HumanCommsV56
+from app.services.text_repair_v58 import repair_payload_v58
 
 router = APIRouter(tags=["media-human-v56"])
 
@@ -24,12 +25,13 @@ body{margin:0;background:#f7f3ee;font:15px/1.45 system-ui,-apple-system,BlinkMac
 let tab='chats';const $=id=>document.getElementById(id);function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}function copyText(t){navigator.clipboard?.writeText(String(t||''));}
 function mediaHtml(items){if(!items||!items.length)return '';return `<div class="media">${items.map(m=>{const url=m.preview_url||m.url;if(m.media_type==='image'&&url)return `<a href="${esc(m.url||url)}" target="_blank"><img src="${esc(url)}"/></a>`;if(m.media_type==='video'&&url)return `<video src="${esc(url)}" controls></video>`;if(url)return `<a class="file" href="${esc(url)}" target="_blank">📎 ${esc(m.filename||m.media_type||'файл')}</a>`;return `<span class="file">📎 ${esc(m.filename||m.media_type||'медиа')} ${m.external_media_id?`<span class="tech">${esc(m.external_media_id)}</span>`:''}</span>`}).join('')}</div>`}
 function productHtml(x){if(!x.product_name&&!x.sku)return '—';const sku=x.sku?`<span class="badge">арт. ${esc(x.sku)}</span>`:'';const name=x.product_url?`<a href="${esc(x.product_url)}" target="_blank">${esc(x.product_name||'товар')}</a>`:esc(x.product_name||'товар');return `${name} ${sku}`}
+function questionHtml(x){if(!x.question_url)return '—';return `<a href="${esc(x.question_url)}" target="_blank">открыть вопрос</a>`}
 function orderHtml(x){if(!x.order_number)return '—';const num=x.order_url?`<a href="${esc(x.order_url)}" target="_blank">${esc(x.order_number)}</a>`:esc(x.order_number);return `${num}<button class="copy" onclick="copyText('${esc(x.order_number)}')">копировать</button><span class="tech">${esc(x.order_kind||'')}</span>`}
 async function api(path){const r=await fetch(path);const t=await r.text();try{return JSON.parse(t)}catch(e){return{ok:false,error:t}}}
 function setTab(t){tab=t;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));$('detail').innerHTML='<div class="empty">Выбери строку слева</div>';loadList()}
 async function syncMedia(){$('list').innerHTML='Сканирую raw и сохраняю медиа...';const d=await api('/ops-v56/api/media/sync-existing?limit=100000');$('list').innerHTML=`<pre>${esc(JSON.stringify(d,null,2))}</pre>`}
 async function loadList(){const p=$('platform').value;$('list').innerHTML='Загрузка...';let data=tab==='chats'?await api(`/ops-v56/api/chats?platform=${p}&limit=5000`):await api(`/ops-v56/api/communications?entity_type=${tab}&platform=${p}&limit=20000`);if(!data.ok){$('list').innerHTML=`<div class="empty">${esc(data.error||'Ошибка')}</div>`;return}const items=data.items||[];window.currentItems=items;$('list').innerHTML=items.length?items.map((x,i)=>`<div class="item" onclick="openItem(${i})"><div class="title">${esc(x.title||x.client_name||x.product_name||x.text||'Без названия')}</div><div class="meta">${esc(x.platform||'')} · ${esc(x.last_message_at||x.created_at_marketplace||'')} ${x.media?.length?`· 📎 ${x.media.length}`:''}</div><div class="meta">${productHtml(x)}</div></div>`).join(''):'<div class="empty">Нет данных</div>'}
-async function openItem(i){const x=window.currentItems[i];if(tab==='chats'){$('detail').innerHTML='<div class="empty">Загрузка истории...</div>';const data=await api(`/ops-v56/api/chats/${encodeURIComponent(x.platform)}/${encodeURIComponent(x.technical_chat_id)}/messages?limit=1000`);const chat=data.chat||x,msgs=data.items||[];$('detail').innerHTML=`<h2>${esc(chat.title||'Чат')}</h2><div class="kv"><b>Клиент</b><div>${esc(chat.client_name||'—')}</div><b>Товар</b><div>${productHtml(chat)}</div><b>Заказ</b><div>${orderHtml(chat)}</div><b>Площадка</b><div>${esc(chat.platform)}</div></div><details class="tech"><summary>технический ID</summary>${esc(chat.technical_chat_id||x.technical_chat_id)}</details>${mediaHtml(chat.media)}<hr/>${msgs.length?msgs.map(m=>`<div class="msg ${m.direction==='seller'?'seller':'customer'}"><div class="who">${m.direction==='seller'?'Продавец/оператор':'Клиент'}</div><div>${esc(m.text||'')}</div>${mediaHtml(m.media)}<div class="time">${esc(m.sent_at||'')}</div></div>`).join(''):'<div class="empty">Сообщений нет</div>'}`}else{$('detail').innerHTML=`<h2>${tab==='review'?'Отзыв':'Вопрос'}</h2><div class="kv"><b>Площадка</b><div>${esc(x.platform)}</div><b>Товар</b><div>${productHtml(x)}</div><b>Заказ</b><div>${orderHtml(x)}</div><b>Оценка</b><div>${esc(x.rating||'—')}</div><b>Дата</b><div>${esc(x.created_at_marketplace||'—')}</div></div><p>${esc(x.text||'')}</p>${x.answer_text?`<h3>Ответ продавца</h3><p>${esc(x.answer_text)}</p>`:''}${mediaHtml(x.media)}<details><summary>raw</summary><pre>${esc(JSON.stringify(x.raw,null,2))}</pre></details>`}}
+async function openItem(i){const x=window.currentItems[i];if(tab==='chats'){$('detail').innerHTML='<div class="empty">Загрузка истории...</div>';const data=await api(`/ops-v56/api/chats/${encodeURIComponent(x.platform)}/${encodeURIComponent(x.technical_chat_id)}/messages?limit=1000`);const chat=data.chat||x,msgs=data.items||[];$('detail').innerHTML=`<h2>${esc(chat.title||'Чат')}</h2><div class="kv"><b>Клиент</b><div>${esc(chat.client_name||'—')}</div><b>Товар</b><div>${productHtml(chat)}</div><b>Заказ</b><div>${orderHtml(chat)}</div><b>Площадка</b><div>${esc(chat.platform)}</div></div><details class="tech"><summary>технический ID</summary>${esc(chat.technical_chat_id||x.technical_chat_id)}</details>${mediaHtml(chat.media)}<hr/>${msgs.length?msgs.map(m=>`<div class="msg ${m.direction==='seller'?'seller':'customer'}"><div class="who">${m.direction==='seller'?'Продавец/оператор':'Клиент'}</div><div>${esc(m.text||'')}</div>${mediaHtml(m.media)}<div class="time">${esc(m.sent_at||'')}</div></div>`).join(''):'<div class="empty">Сообщений нет</div>'}`}else{$('detail').innerHTML=`<h2>${tab==='review'?'Отзыв':'Вопрос'}</h2><div class="kv"><b>Площадка</b><div>${esc(x.platform)}</div><b>Товар</b><div>${productHtml(x)}</div><b>Заказ</b><div>${orderHtml(x)}</div><b>Вопрос</b><div>${questionHtml(x)}</div><b>Оценка</b><div>${esc(x.rating||'—')}</div><b>Дата</b><div>${esc(x.created_at_marketplace||'—')}</div></div><p>${esc(x.text||'')}</p>${x.answer_text?`<h3>Ответ продавца</h3><p>${esc(x.answer_text)}</p>`:''}${mediaHtml(x.media)}<details><summary>raw</summary><pre>${esc(JSON.stringify(x.raw,null,2))}</pre></details>`}}
 loadList();
 </script></body></html>
 """)
@@ -37,19 +39,19 @@ loadList();
 
 @router.get("/ops-v56/api/chats")
 def api_chats(platform: str = "ALL", limit: int = 5000, db: Session = Depends(get_db)):
-    return HumanCommsV56(db).chats(platform=platform, limit=limit)
+    return repair_payload_v58(HumanCommsV56(db).chats(platform=platform, limit=limit))
 
 
 @router.get("/ops-v56/api/chats/{platform}/{external_chat_id}/messages")
 def api_chat_messages(platform: str, external_chat_id: str, limit: int = 1000, db: Session = Depends(get_db)):
-    return HumanCommsV56(db).chat_messages(platform=platform, external_chat_id=external_chat_id, limit=limit)
+    return repair_payload_v58(HumanCommsV56(db).chat_messages(platform=platform, external_chat_id=external_chat_id, limit=limit))
 
 
 @router.get("/ops-v56/api/communications")
 def api_communications(entity_type: str = "review", platform: str = "ALL", limit: int = 20000, db: Session = Depends(get_db)):
-    return HumanCommsV56(db).communications(entity_type=entity_type, platform=platform, limit=limit)
+    return repair_payload_v58(HumanCommsV56(db).communications(entity_type=entity_type, platform=platform, limit=limit))
 
 
 @router.get("/ops-v56/api/media/sync-existing")
 def api_sync_existing_media(limit: int = 100000, db: Session = Depends(get_db)):
-    return HumanCommsV56(db).sync_existing_media(limit=limit)
+    return repair_payload_v58(HumanCommsV56(db).sync_existing_media(limit=limit))
