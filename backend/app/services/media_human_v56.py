@@ -29,21 +29,58 @@ def sha(value: Any) -> str:
     return hashlib.sha1(dumps(value).encode("utf-8")).hexdigest()[:32]
 
 
+
+def _mojibake_score(value: str) -> int:
+    cyr = sum(1 for ch in value if ("а" <= ch.lower() <= "я") or ch.lower() == "ё")
+    emoji = sum(1 for ch in value if ord(ch) > 0x1F000)
+    bad = sum(value.count(x) for x in ["Р", "С", "рџ", "Ð", "Ñ", "В·", "в„", "�"])
+    return cyr * 3 + emoji * 6 - bad * 4
+
+
+def _decode_cp1251_mojibake(value: str) -> str | None:
+    buf = bytearray()
+    for ch in value:
+        o = ord(ch)
+        if 0x80 <= o <= 0x9F:
+            buf.append(o)
+            continue
+        try:
+            buf.extend(ch.encode("cp1251"))
+        except Exception:
+            try:
+                buf.extend(ch.encode("latin1"))
+            except Exception:
+                buf.extend(ch.encode("utf-8", errors="ignore"))
+    try:
+        return bytes(buf).decode("utf-8")
+    except Exception:
+        return None
+
+
 def fix_text(value: Any) -> Any:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or not value:
         return value
-    if not any(marker in value for marker in ["Р", "С", "Ð", "Ñ"]):
+    markers = ["Р", "С", "рџ", "Ð", "Ñ", "В·", "в„", "\x98", "\x9d", "\x8f", "\x81"]
+    if not any(m in value for m in markers):
         return value
+    candidates = []
+    c = _decode_cp1251_mojibake(value)
+    if c:
+        candidates.append(c)
     for enc in ("cp1251", "latin1"):
         try:
-            repaired = value.encode(enc, errors="ignore").decode("utf-8", errors="ignore")
-            if repaired and any(("а" <= ch.lower() <= "я") or ch.lower() == "ё" for ch in repaired):
-                return repaired
+            candidates.append(value.encode(enc, errors="ignore").decode("utf-8", errors="ignore"))
         except Exception:
             pass
-    return value
-
-
+    best = value
+    best_score = _mojibake_score(value)
+    for cand in candidates:
+        if not cand:
+            continue
+        score = _mojibake_score(cand)
+        if score > best_score:
+            best, best_score = cand, score
+    return best
 def fix_tree(value: Any) -> Any:
     if isinstance(value, str):
         return fix_text(value)
@@ -109,15 +146,28 @@ def media_kind(url: str | None = None, mime: str | None = None, typ: str | None 
     return "file"
 
 
+
+def is_product_or_question_url(url: str | None) -> bool:
+    if not url:
+        return False
+    u = str(url).lower()
+    return "ozon.ru/product/" in u or "wildberries.ru/catalog/" in u or "/questions/" in u
+
+
 def extract_media_v56(raw: Any) -> list[dict[str, Any]]:
     raw = fix_tree(loads(raw) or raw)
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    media_words = ["photo", "image", "picture", "video", "file", "media", "attachment", "document", "download", "preview", "thumbnail"]
+    media_container_keys = {"photo", "photos", "photolinks", "photoLinks", "images", "image", "pictures", "picture", "video", "videos", "attachments", "attachment", "files", "file", "media", "documents", "document"}
+    media_container_keys_lower = {str(k).lower() for k in media_container_keys}
     url_keys = ["url", "link", "src", "href", "preview", "previewUrl", "preview_url", "thumbnail", "thumbnailUrl", "fileUrl", "file_url", "imageUrl", "image_url", "videoUrl", "video_url", "fullSize", "miniSize", "big", "small", "origin", "original"]
     id_keys = ["downloadID", "downloadId", "download_id", "mediaId", "media_id", "fileId", "file_id", "photoId", "photo_id", "videoId", "video_id", "id", "uuid"]
 
     def add(kind: str | None, url: str | None, preview: str | None, ext_id: Any, filename: Any, mime: Any, payload: Any) -> None:
+        if is_product_or_question_url(url):
+            return
+        if is_product_or_question_url(preview):
+            preview = None
         if not (url or ext_id or filename):
             return
         kind = kind or media_kind(url, str(mime or ""), str(get_any(payload, "type", "mediaType", default="") or ""))
@@ -143,10 +193,13 @@ def extract_media_v56(raw: Any) -> list[dict[str, Any]]:
             continue
         for key, value in node.items():
             low = str(key).lower()
-            url = maybe_url(value)
-            if url and (any(w in low for w in media_words + ["url", "link"]) or any(ext in url.lower() for ext in [".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".pdf"])):
-                add(media_kind(url=url, typ=low), url, None, get_any(node, *id_keys, default=None), get_any(node, "filename", "fileName", "name", "title", default=None), get_any(node, "mimeType", "contentType", default=None), node)
-            if isinstance(value, list) and any(w in low for w in media_words):
+            if low not in media_container_keys_lower:
+                continue
+            if isinstance(value, str):
+                u = maybe_url(value)
+                if u:
+                    add(media_kind(url=u, typ=low), u, None, get_any(node, *id_keys, default=None), get_any(node, "filename", "fileName", "name", "title", default=None), get_any(node, "mimeType", "contentType", default=None), {key: value})
+            elif isinstance(value, list):
                 for item in value:
                     if isinstance(item, str):
                         u = maybe_url(item)
@@ -154,22 +207,20 @@ def extract_media_v56(raw: Any) -> list[dict[str, Any]]:
                             add(media_kind(url=u, typ=low), u, None, None, None, None, {key: item})
                     elif isinstance(item, dict):
                         urls = [maybe_url(item.get(k)) for k in url_keys if k in item]
-                        u = next((x for x in urls if x), None)
+                        u = next((x for x in urls if x and not is_product_or_question_url(x)), None)
                         preview = maybe_url(item.get("previewUrl") or item.get("preview_url") or item.get("thumbnail") or item.get("miniSize"))
                         add(media_kind(url=u, mime=get_any(item, "mimeType", "contentType", default=None), typ=get_any(item, "type", "mediaType", default=low)), u, preview, get_any(item, *id_keys, default=None), get_any(item, "filename", "fileName", "name", "title", default=None), get_any(item, "mimeType", "contentType", default=None), item)
-            if isinstance(value, dict) and any(w in low for w in media_words):
+            elif isinstance(value, dict):
                 urls = [maybe_url(value.get(k)) for k in url_keys if k in value]
-                u = next((x for x in urls if x), None)
+                u = next((x for x in urls if x and not is_product_or_question_url(x)), None)
                 preview = maybe_url(value.get("previewUrl") or value.get("preview_url") or value.get("thumbnail") or value.get("miniSize"))
                 add(media_kind(url=u, mime=get_any(value, "mimeType", "contentType", default=None), typ=get_any(value, "type", "mediaType", default=low)), u, preview, get_any(value, *id_keys, default=None), get_any(value, "filename", "fileName", "name", "title", default=None), get_any(value, "mimeType", "contentType", default=None), value)
 
         if any(k in node for k in id_keys) and any(str(k).lower() in ["type", "mediatype", "contenttype", "mimetype"] for k in node.keys()):
             urls = [maybe_url(node.get(k)) for k in url_keys if k in node]
-            u = next((x for x in urls if x), None)
+            u = next((x for x in urls if x and not is_product_or_question_url(x)), None)
             add(media_kind(url=u, mime=get_any(node, "mimeType", "contentType", default=None), typ=get_any(node, "type", "mediaType", default=None)), u, None, get_any(node, *id_keys, default=None), get_any(node, "filename", "fileName", "name", "title", default=None), get_any(node, "mimeType", "contentType", default=None), node)
-
     return out[:100]
-
 
 def message_text_v56(raw: Any) -> str:
     raw = fix_tree(loads(raw) or raw)
@@ -185,7 +236,19 @@ def message_text_v56(raw: Any) -> str:
         return "\n".join([p for p in parts if p]).strip()
     if not isinstance(raw, dict):
         return ""
-    for key in ["text", "message_text", "messageText", "body", "content", "value", "comment", "caption", "description", "reviewText", "question", "answer", "plain_text", "plainText", "html"]:
+    main = fix_text(str(raw.get("text") or "").strip()) if raw.get("text") is not None else ""
+    pros = fix_text(str(raw.get("pros") or "").strip()) if raw.get("pros") is not None else ""
+    cons = fix_text(str(raw.get("cons") or "").strip()) if raw.get("cons") is not None else ""
+    if main or pros or cons:
+        parts = []
+        if main:
+            parts.append(main)
+        if pros:
+            parts.append(f"Достоинства: {pros}")
+        if cons:
+            parts.append(f"Недостатки: {cons}")
+        return "\n".join(parts)
+    for key in ["message_text", "messageText", "body", "content", "value", "comment", "caption", "description", "reviewText", "question", "answer", "plain_text", "plainText", "html"]:
         value = raw.get(key)
         if isinstance(value, str) and value.strip():
             return fix_text(value.strip())
@@ -200,13 +263,12 @@ def message_text_v56(raw: Any) -> str:
             if nested:
                 return nested
     return "[медиа]" if extract_media_v56(raw) else ""
-
-
 def is_bad_text(value: Any) -> bool:
     if value is None:
         return True
     t = str(value).strip().lower()
     return not t or t in {"-", "—", "none", "null"} or "текст не распознан" in t or "обнови customer ops" in t
+
 
 
 def product_from_raw(platform: str, row: dict[str, Any], raw: Any) -> dict[str, Any]:
@@ -217,20 +279,21 @@ def product_from_raw(platform: str, row: dict[str, Any], raw: Any) -> dict[str, 
         product = products[0]
     if not isinstance(product, dict):
         product = {}
-    sku = str(row.get("sku") or get_any(product, "nmID", "nmId", "sku", "offer_id", "offerId", "product_id", "id", default="") or get_any(raw, "nmID", "nmId", "sku", "offer_id", "offerId", "product_id", default="") or "")
+    sku = str(row.get("sku") or get_any(product, "nmID", "nmId", "sku", "offer_id", "offerId", "product_id", "productId", "id", default="") or get_any(raw, "nmID", "nmId", "sku", "offer_id", "offerId", "product_id", "productId", default="") or "")
     name = fix_text(row.get("product_name") or get_any(product, "name", "productName", "product_name", "subject", "title", default="") or get_any(raw, "productName", "product_name", "subject", "title", default="") or "")
-    url = row.get("product_url") or get_any(product, "url", "link", "product_url", "productUrl", default=None) or get_any(raw, "productUrl", "product_url", "url", "link", default=None)
+    url = row.get("product_url")
+    if not url and isinstance(product, dict):
+        url = product.get("product_url") or product.get("productUrl")
+    if not url and isinstance(raw, dict):
+        url = raw.get("product_url") or raw.get("productUrl")
+    if url and "/questions/" in str(url).lower():
+        url = None
     platform = (platform or row.get("platform") or "").upper()
-    if not url:
-        if platform == "WB" and sku.isdigit():
-            url = f"https://www.wildberries.ru/catalog/{sku}/detail.aspx"
-        elif platform == "OZON":
-            pid = get_any(product, "product_id", "productId", "id", default=None) or get_any(raw, "product_id", "productId", default=None)
-            if pid and str(pid).isdigit():
-                url = f"https://www.ozon.ru/product/{pid}/"
+    if not url and platform == "WB" and sku.isdigit():
+        url = f"https://www.wildberries.ru/catalog/{sku}/detail.aspx"
+    if url and not ("ozon.ru/product/" in str(url).lower() or "wildberries.ru/catalog/" in str(url).lower()):
+        url = None
     return {"sku": sku, "product_name": name, "product_url": url}
-
-
 def order_from_raw(row: dict[str, Any], raw: Any) -> dict[str, Any]:
     raw = fix_tree(loads(raw) or raw or {})
     number = row.get("order_number") or row.get("posting_number") or get_any(raw, "posting_number", "postingNumber", "order_number", "orderNumber", "order_id", "orderId", "rid", "srid", "shipment_id", "shipmentId", default=None)
@@ -288,6 +351,20 @@ class HumanCommsV56:
         except Exception:
             self.db.rollback()
 
+
+    def cleanup_false_media(self) -> int:
+        self.ensure_media_schema()
+        sql_pg = "DELETE FROM communication_media WHERE url ILIKE '%ozon.ru/product/%' OR url ILIKE '%wildberries.ru/catalog/%' OR url ILIKE '%/questions/%' OR preview_url ILIKE '%ozon.ru/product/%' OR preview_url ILIKE '%wildberries.ru/catalog/%' OR preview_url ILIKE '%/questions/%'"
+        sql_sqlite = "DELETE FROM communication_media WHERE lower(coalesce(url,'')) LIKE '%ozon.ru/product/%' OR lower(coalesce(url,'')) LIKE '%wildberries.ru/catalog/%' OR lower(coalesce(url,'')) LIKE '%/questions/%' OR lower(coalesce(preview_url,'')) LIKE '%ozon.ru/product/%' OR lower(coalesce(preview_url,'')) LIKE '%wildberries.ru/catalog/%' OR lower(coalesce(preview_url,'')) LIKE '%/questions/%'"
+        for sql in (sql_pg, sql_sqlite):
+            try:
+                res = self.db.execute(text(sql))
+                self.db.commit()
+                return int(getattr(res, "rowcount", 0) or 0)
+            except Exception:
+                self.db.rollback()
+        return 0
+
     def upsert_media(self, entity_type: str, entity_id: str, platform: str, raw: Any) -> int:
         self.ensure_media_schema()
         count = 0
@@ -309,6 +386,7 @@ class HumanCommsV56:
             self.db.rollback()
         return count
 
+
     def media_for(self, entity_type: str, entity_id: str, platform: str, raw: Any | None = None) -> list[dict[str, Any]]:
         self.ensure_media_schema()
         if raw is not None:
@@ -321,10 +399,13 @@ class HumanCommsV56:
         out = []
         for r in rows:
             d = dict(r)
+            if is_product_or_question_url(d.get("url")):
+                continue
+            if is_product_or_question_url(d.get("preview_url")):
+                d["preview_url"] = None
             d["raw_payload"] = loads(d.get("raw_payload"))
             out.append(fix_tree(d))
         return out if out else (extract_media_v56(raw) if raw is not None else [])
-
     def normalize_chat(self, row: dict[str, Any]) -> dict[str, Any]:
         raw = fix_tree(loads(row.get("raw")) or {})
         platform = str(row.get("platform") or get_any(raw, "platform", default="")).upper()
@@ -423,7 +504,9 @@ class HumanCommsV56:
                     rows_out.append(fix_tree({"id": d.get("id"), "entity_type": et, "platform": d.get("platform") or p, "external_id": ext, "text": message_text_v56(raw) or fix_text(d.get("text") or d.get("question")), "rating": d.get("rating"), "created_at_marketplace": parse_dt(d.get("created_at_marketplace") or d.get("created_at")), "answer_text": d.get("answer_text") or d.get("response_text"), "media": media, "product_name": product.get("product_name"), "sku": product.get("sku"), "product_url": product.get("product_url"), "order_number": order.get("order_number"), "order_url": order.get("order_url"), "raw": raw}))
         return {"ok": True, "platform": p, "entity_type": et, "count": len(rows_out), "items": rows_out[:limit]}
 
+
     def sync_existing_media(self, limit: int = 100000) -> dict[str, Any]:
+        cleaned = self.cleanup_false_media()
         totals: dict[str, int] = {}
         scanned = 0
         if "recovery_communications" in self.tables():
@@ -456,4 +539,4 @@ class HumanCommsV56:
                 scanned += 1
                 count = self.upsert_media("chat_message", str(r["external_message_id"]), str(r["platform"]), r.get("raw"))
                 totals["chat_message"] = totals.get("chat_message", 0) + count
-        return {"ok": True, "scanned": scanned, "media_added_or_updated": totals}
+        return {"ok": True, "scanned": scanned, "false_media_deleted": cleaned, "media_added_or_updated": totals}
